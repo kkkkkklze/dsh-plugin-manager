@@ -5,7 +5,7 @@
   "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "plugin-manager", "plugins"],
   "author": "kkkkkkklze",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/kkkkkkklze/dsh-plugin-manager.git" },
+  "repository": { "type": "git", "url": "https://github.com/kkkkkklze/dsh-plugin-manager.git" },
   "type": "module",
   "main": "index.js",
   "exports": { ".": "./index.js", "./client": "./client-bundle.js", "./package.json": "./package.json" },

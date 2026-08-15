@@ -16,7 +16,7 @@
 
 ```bash
 # 从 GitHub 安装(推荐)
-dsh plugin --profile <name> add github:kkkkkkklze/dsh-plugin-manager
+dsh plugin --profile <name> add github:kkkkkklze/dsh-plugin-manager
 ```
 
 重启 dsh web 后:设置 → 插件 → 出现「分类 / 插件包 / 市场」三个子标签。
