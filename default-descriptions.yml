@@ -1,0 +1,130 @@
+# 出厂介绍库 —— dsh-plugin-manager 预置的插件简短介绍(覆盖 web profile 全部插件)
+'@deepseek-ai/cordis-plugin-hmr': 源码热更新:改动插件代码即自动重载
+'@deepseek-ai/cordis-plugin-timer': 定时器服务:计划任务与延时调度
+'@deepseek-ai/dsh-agent': 核心 Agent 服务:会话编排与执行
+'@deepseek-ai/dsh-agent-default-model': 默认模型路由:未指定时用哪个模型
+'@deepseek-ai/dsh-agent-instructions': Agent 系统指令注入
+'@deepseek-ai/dsh-agent-loop': Agent 主循环:模型回合驱动
+'@deepseek-ai/dsh-agent-presets': Agent 预设/人格配置
+'@deepseek-ai/dsh-api-gateway': Typert 远程调用网关(host 侧)
+'@deepseek-ai/dsh-api-remotes': 客户端远程服务装配
+'@deepseek-ai/dsh-attachment-local': 本地附件读写
+'@deepseek-ai/dsh-bash-sandbox': bash 命令沙箱执行
+'@deepseek-ai/dsh-client-connection': 客户端与宿主的连接通道
+'@deepseek-ai/dsh-client-hmr': 客户端热更新
+'@deepseek-ai/dsh-client-locale': 客户端多语言
+'@deepseek-ai/dsh-client-modules': 客户端模块加载系统
+'@deepseek-ai/dsh-client-runtime': 客户端运行时
+'@deepseek-ai/dsh-client-ui-agent-preset': Agent 预设界面
+'@deepseek-ai/dsh-client-ui-commands': 斜杠命令面板
+'@deepseek-ai/dsh-client-ui-conversation': 会话消息界面
+'@deepseek-ai/dsh-client-ui-cordis': 动态 Cordis 插件界面
+'@deepseek-ai/dsh-client-ui-deliverables': 交付物面板
+'@deepseek-ai/dsh-client-ui-goal': 目标界面
+'@deepseek-ai/dsh-client-ui-input-trigger': 输入触发器(斜杠/@ 等)
+'@deepseek-ai/dsh-client-ui-jobs': 后台任务界面
+'@deepseek-ai/dsh-client-ui-layout': 主布局框架
+'@deepseek-ai/dsh-client-ui-message-feedback': 消息反馈(赞/踩)
+'@deepseek-ai/dsh-client-ui-model-selection': 模型选择器
+'@deepseek-ai/dsh-client-ui-permission-presets': 权限预设界面
+'@deepseek-ai/dsh-client-ui-plan': 计划模式界面
+'@deepseek-ai/dsh-client-ui-settings': 设置框架
+'@deepseek-ai/dsh-client-ui-settings-general': 通用设置区
+'@deepseek-ai/dsh-client-ui-settings-models': 模型设置区
+'@deepseek-ai/dsh-client-ui-settings-plugin-inventory': 插件清单设置页(只读)
+'@deepseek-ai/dsh-client-ui-settings-plugins': 插件配置设置页
+'@deepseek-ai/dsh-client-ui-sidebar': 侧边栏
+'@deepseek-ai/dsh-client-ui-skill': 技能界面
+'@deepseek-ai/dsh-client-ui-subagent': 子代理界面
+'@deepseek-ai/dsh-client-ui-theme': 主题
+'@deepseek-ai/dsh-client-ui-tool': 工具卡片界面
+'@deepseek-ai/dsh-client-ui-trajectory': 执行轨迹视图
+'@deepseek-ai/dsh-client-ui-user-questions': 用户提问界面
+'@deepseek-ai/dsh-client-ui-workflow-run': 工作流运行界面
+'@deepseek-ai/dsh-client-ui-workspace': 工作区界面
+'@deepseek-ai/dsh-code-runtime-worker-thread': 代码执行 worker(隔离线程)
+'@deepseek-ai/dsh-command-compact': 压缩上下文命令
+'@deepseek-ai/dsh-command-feedback': 反馈命令
+'@deepseek-ai/dsh-command-goal': 目标命令
+'@deepseek-ai/dsh-commands': 斜杠命令框架
+'@deepseek-ai/dsh-compaction-basic': 上下文压缩
+'@deepseek-ai/dsh-compaction-tool-result-pruner': 工具结果裁剪(控制上下文体积)
+'@deepseek-ai/dsh-cordis-client-runner': 动态客户端运行器
+'@deepseek-ai/dsh-cordis-host-runner': 动态宿主运行器
+'@deepseek-ai/dsh-credentials-local': 本地凭据存储
+'@deepseek-ai/dsh-fs-observation-policy': 文件读改写策略
+'@deepseek-ai/dsh-fs-sandbox': 文件系统沙箱
+'@deepseek-ai/dsh-goal': 长期目标管理
+'@deepseek-ai/dsh-goal-round-driver': 目标回合驱动
+'@deepseek-ai/dsh-host-apiproxy': API 代理(host 侧)
+'@deepseek-ai/dsh-host-directory-picker-auto': 目录选择器
+'@deepseek-ai/dsh-host-plugin-inventory': 插件清单投影(只读服务)
+'@deepseek-ai/dsh-host-webserver': 宿主 web 服务器
+'@deepseek-ai/dsh-jobs-local': 本机后台任务
+'@deepseek-ai/dsh-llm': LLM 路由服务
+'@deepseek-ai/dsh-llm-deepseek': DeepSeek 模型适配器
+'@deepseek-ai/dsh-llm-pi-ai': Pi AI 模型适配器
+'@deepseek-ai/dsh-llm-retry': LLM 重试策略
+'@deepseek-ai/dsh-message-feedback': 消息反馈存储
+'@deepseek-ai/dsh-permission-presets': 权限预设
+'@deepseek-ai/dsh-plan-mode': 计划模式
+'@deepseek-ai/dsh-pwsh-sandbox': PowerShell 命令沙箱
+'@deepseek-ai/dsh-repeat-tool-reminder': 重复工具调用提醒
+'@deepseek-ai/dsh-sandbox-local': 本机沙箱执行器
+'@deepseek-ai/dsh-sandbox-policy': 沙箱权限策略
+'@deepseek-ai/dsh-session': 会话核心
+'@deepseek-ai/dsh-session-checkpoint-policy': 会话检查点策略
+'@deepseek-ai/dsh-session-log-export': 会话日志导出
+'@deepseek-ai/dsh-session-persistence-jsonl': 会话持久化(JSONL)
+'@deepseek-ai/dsh-session-projection': 会话投影
+'@deepseek-ai/dsh-session-projection-cache': 会话投影缓存
+'@deepseek-ai/dsh-session-query-sqlite': 会话查询(SQLite)
+'@deepseek-ai/dsh-session-stats': 会话统计
+'@deepseek-ai/dsh-session-telemetry-otel': 会话遥测(OpenTelemetry)
+'@deepseek-ai/dsh-session-title': 会话标题
+'@deepseek-ai/dsh-session-title-first-prompt-llm': 首条消息生成标题(LLM)
+'@deepseek-ai/dsh-settings-file': 设置文件存储
+'@deepseek-ai/dsh-shell-env': shell 环境变量注入
+'@deepseek-ai/dsh-skill': 技能系统
+'@deepseek-ai/dsh-skill-badge': 技能徽章
+'@deepseek-ai/dsh-skill-filesystem': 文件系统技能
+'@deepseek-ai/dsh-spill-local': 本地溢出存储(超限时落盘)
+'@deepseek-ai/dsh-spill-policy': 溢出策略
+'@deepseek-ai/dsh-storage': 存储抽象
+'@deepseek-ai/dsh-storage-domain': 存储域
+'@deepseek-ai/dsh-storage-json': JSON 存储
+'@deepseek-ai/dsh-subagent': 子代理系统
+'@deepseek-ai/dsh-subagent-fork-in-process': 进程内 fork 子代理
+'@deepseek-ai/dsh-subagent-spawn-in-process': 进程内 spawn 子代理
+'@deepseek-ai/dsh-subprocess-local': 本机子进程执行
+'@deepseek-ai/dsh-system-prompt': 系统提示词服务
+'@deepseek-ai/dsh-token-meter': token 计量
+'@deepseek-ai/dsh-tool-bash': bash 执行工具
+'@deepseek-ai/dsh-tool-call-timeout-policy': 工具调用超时策略
+'@deepseek-ai/dsh-tool-fs': 文件系统工具(读/写/编辑)
+'@deepseek-ai/dsh-tool-fs-search': 文件搜索工具
+'@deepseek-ai/dsh-tool-goal': 目标工具
+'@deepseek-ai/dsh-tool-jobs': 后台任务工具
+'@deepseek-ai/dsh-tool-pwsh': PowerShell 执行工具
+'@deepseek-ai/dsh-tool-ralph': Ralph 迭代工具(全新 agent 循环)
+'@deepseek-ai/dsh-tool-skill': 技能调用工具
+'@deepseek-ai/dsh-tool-str-replace-editor': 字符串替换编辑器工具
+'@deepseek-ai/dsh-tool-subagent': 子代理工具
+'@deepseek-ai/dsh-tool-subagent-control': 子代理控制工具
+'@deepseek-ai/dsh-tool-subagent-control/list-agents': 子代理列表工具
+'@deepseek-ai/dsh-tool-subagent-report': 子代理报告工具
+'@deepseek-ai/dsh-tool-todo': 待办列表工具
+'@deepseek-ai/dsh-tool-web': 网页获取工具
+'@deepseek-ai/dsh-tool-workflow': 工作流工具
+'@deepseek-ai/dsh-tools': 工具注册表
+'@deepseek-ai/dsh-typert-loader': Typert 远程加载器
+'@deepseek-ai/dsh-typert-registry': Typert 远程注册表
+'@deepseek-ai/dsh-user-approval': 用户审批服务
+'@deepseek-ai/dsh-user-questions': 用户提问服务
+'@deepseek-ai/dsh-web': web 应用内核
+'@deepseek-ai/dsh-web-app': web 应用(前端装配)
+'@deepseek-ai/dsh-web-app/startup': web 应用启动插件
+'@deepseek-ai/dsh-web-search-deepseek': DeepSeek 网页搜索
+'@deepseek-ai/dsh-workflow-worker-thread': 工作流 worker(线程)
+'@deepseek-ai/dsh-workspace': 工作区服务
+'dsh-plugin-manager': 插件管理器(本插件):分类、启停、预设一键切换

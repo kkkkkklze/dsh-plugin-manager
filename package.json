@@ -1,0 +1,24 @@
+{
+  "name": "dsh-plugin-manager",
+  "version": "0.1.0",
+  "description": "In-web plugin manager for DeepSeek Harness: categorized list, tags, one-click preset switching, plugin marketplace, import/export. 在网页里管理 dsh 插件:分类/标签/预设一键切换/插件市场/导入导出。",
+  "keywords": ["dsh", "deepseek-harness", "dsh-plugin", "plugin-manager", "plugins"],
+  "author": "kkkkkkklze",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/kkkkkkklze/dsh-plugin-manager.git" },
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js", "./client": "./client-bundle.js", "./package.json": "./package.json" },
+  "files": ["index.js", "engine.js", "manager.js", "client-bundle.js", "default-tags.yml", "default-descriptions.yml", "cordis.patch.yml"],
+  "dependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/cordis-plugin-include": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*",
+    "js-yaml": "^4.1.0"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml", "tags": ["管理", "工具"] },
+    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-settings"] }
+  }
+}

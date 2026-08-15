@@ -1,0 +1,2 @@
+# 组合包层不再自插 pm-manager 行(由管理器在用户 patch 层统一持有,避免双重插入导致 duplicate id)
+[]

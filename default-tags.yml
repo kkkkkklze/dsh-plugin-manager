@@ -1,0 +1,305 @@
+# 出厂标签库 —— dsh-plugin-manager 预置分类(2026-08-15 快照,覆盖 web profile 全部插件)
+# 合并优先级:用户标签 > bundle 声明 > 本出厂库 > 自动前缀规则;同一插件可多标签
+'@deepseek-ai/cordis-plugin-hmr':
+  - 框架
+'@deepseek-ai/cordis-plugin-timer':
+  - 框架
+'@deepseek-ai/dsh-agent':
+  - 智能体
+'@deepseek-ai/dsh-agent-default-model':
+  - 智能体
+'@deepseek-ai/dsh-agent-instructions':
+  - 智能体
+'@deepseek-ai/dsh-agent-loop':
+  - 智能体
+'@deepseek-ai/dsh-agent-presets':
+  - 智能体
+'@deepseek-ai/dsh-api-gateway':
+  - 内核
+'@deepseek-ai/dsh-api-remotes':
+  - 内核
+'@deepseek-ai/dsh-attachment-local':
+  - 附件
+'@deepseek-ai/dsh-bash-sandbox':
+  - 安全
+'@deepseek-ai/dsh-client-connection':
+  - 内核
+  - 客户端
+'@deepseek-ai/dsh-client-hmr':
+  - 客户端
+'@deepseek-ai/dsh-client-locale':
+  - 客户端
+'@deepseek-ai/dsh-client-modules':
+  - 内核
+  - 客户端
+'@deepseek-ai/dsh-client-runtime':
+  - 内核
+  - 客户端
+'@deepseek-ai/dsh-client-ui-agent-preset':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-commands':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-conversation':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-cordis':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-deliverables':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-goal':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-input-trigger':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-jobs':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-layout':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-message-feedback':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-model-selection':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-permission-presets':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-plan':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-settings':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-settings-general':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-settings-models':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-settings-plugin-inventory':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-settings-plugins':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-sidebar':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-skill':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-subagent':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-theme':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-tool':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-trajectory':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-user-questions':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-workflow-run':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-client-ui-workspace':
+  - UI
+  - 客户端
+'@deepseek-ai/dsh-code-runtime-worker-thread':
+  - 工作流
+'@deepseek-ai/dsh-command-compact':
+  - 命令
+'@deepseek-ai/dsh-command-feedback':
+  - 命令
+'@deepseek-ai/dsh-command-goal':
+  - 命令
+'@deepseek-ai/dsh-commands':
+  - 命令
+'@deepseek-ai/dsh-compaction-basic':
+  - 会话
+'@deepseek-ai/dsh-compaction-tool-result-pruner':
+  - 会话
+'@deepseek-ai/dsh-cordis-client-runner':
+  - 内核
+'@deepseek-ai/dsh-cordis-host-runner':
+'@deepseek-ai/dsh-credentials-local':
+  - 安全
+'@deepseek-ai/dsh-fs-observation-policy':
+  - 安全
+'@deepseek-ai/dsh-fs-sandbox':
+  - 安全
+'@deepseek-ai/dsh-goal':
+  - 目标
+'@deepseek-ai/dsh-goal-round-driver':
+  - 目标
+'@deepseek-ai/dsh-host-apiproxy':
+  - 服务端
+  - 网络
+'@deepseek-ai/dsh-host-directory-picker-auto':
+  - 服务端
+  - 工作区
+'@deepseek-ai/dsh-host-plugin-inventory':
+  - 服务端
+'@deepseek-ai/dsh-host-webserver':
+  - 服务端
+  - 网络
+'@deepseek-ai/dsh-jobs-local':
+  - 任务
+'@deepseek-ai/dsh-llm':
+  - LLM
+'@deepseek-ai/dsh-llm-deepseek':
+  - LLM
+'@deepseek-ai/dsh-llm-pi-ai':
+  - LLM
+'@deepseek-ai/dsh-llm-retry':
+  - LLM
+'@deepseek-ai/dsh-message-feedback':
+  - 会话
+'@deepseek-ai/dsh-permission-presets':
+  - 安全
+'@deepseek-ai/dsh-plan-mode':
+  - 目标
+'@deepseek-ai/dsh-pwsh-sandbox':
+  - 安全
+'@deepseek-ai/dsh-repeat-tool-reminder':
+  - 会话
+'@deepseek-ai/dsh-sandbox-local':
+  - 安全
+'@deepseek-ai/dsh-sandbox-policy':
+  - 安全
+'@deepseek-ai/dsh-session':
+'@deepseek-ai/dsh-session-checkpoint-policy':
+  - 会话
+'@deepseek-ai/dsh-session-log-export':
+  - 会话
+'@deepseek-ai/dsh-session-persistence-jsonl':
+  - 会话
+'@deepseek-ai/dsh-session-projection':
+  - 会话
+'@deepseek-ai/dsh-session-projection-cache':
+  - 会话
+'@deepseek-ai/dsh-session-query-sqlite':
+  - 会话
+'@deepseek-ai/dsh-session-stats':
+  - 会话
+'@deepseek-ai/dsh-session-telemetry-otel':
+  - 会话
+'@deepseek-ai/dsh-session-title':
+  - 会话
+'@deepseek-ai/dsh-session-title-first-prompt-llm':
+  - 会话
+'@deepseek-ai/dsh-settings-file':
+  - 配置
+'@deepseek-ai/dsh-shell-env':
+  - 命令
+'@deepseek-ai/dsh-skill':
+  - 技能
+'@deepseek-ai/dsh-skill-badge':
+  - 技能
+'@deepseek-ai/dsh-skill-filesystem':
+  - 技能
+'@deepseek-ai/dsh-spill-local':
+  - 存储
+'@deepseek-ai/dsh-spill-policy':
+  - 存储
+'@deepseek-ai/dsh-storage':
+  - 存储
+'@deepseek-ai/dsh-storage-domain':
+  - 存储
+'@deepseek-ai/dsh-storage-json':
+  - 存储
+'@deepseek-ai/dsh-subagent':
+  - 子代理
+'@deepseek-ai/dsh-subagent-fork-in-process':
+  - 子代理
+'@deepseek-ai/dsh-subagent-spawn-in-process':
+  - 子代理
+'@deepseek-ai/dsh-subprocess-local':
+  - 命令
+'@deepseek-ai/dsh-system-prompt':
+  - 智能体
+'@deepseek-ai/dsh-token-meter':
+  - 会话
+'@deepseek-ai/dsh-tool-bash':
+  - 命令
+  - 工具
+'@deepseek-ai/dsh-tool-call-timeout-policy':
+  - 工具
+  - 安全
+'@deepseek-ai/dsh-tool-fs':
+  - 文件
+  - 工具
+'@deepseek-ai/dsh-tool-fs-search':
+  - 文件
+  - 工具
+'@deepseek-ai/dsh-tool-goal':
+  - 目标
+  - 工具
+'@deepseek-ai/dsh-tool-jobs':
+  - 任务
+  - 工具
+'@deepseek-ai/dsh-tool-pwsh':
+  - 命令
+  - 工具
+'@deepseek-ai/dsh-tool-ralph':
+  - 子代理
+  - 工具
+'@deepseek-ai/dsh-tool-skill':
+  - 技能
+  - 工具
+'@deepseek-ai/dsh-tool-str-replace-editor':
+  - 文件
+  - 工具
+'@deepseek-ai/dsh-tool-subagent':
+  - 子代理
+  - 工具
+'@deepseek-ai/dsh-tool-subagent-control':
+  - 子代理
+  - 工具
+'@deepseek-ai/dsh-tool-subagent-control/list-agents':
+  - 子代理
+  - 工具
+'@deepseek-ai/dsh-tool-subagent-report':
+  - 子代理
+  - 工具
+'@deepseek-ai/dsh-tool-todo':
+  - 工具
+'@deepseek-ai/dsh-tool-web':
+  - 网络
+  - 工具
+'@deepseek-ai/dsh-tool-workflow':
+  - 工作流
+  - 工具
+'@deepseek-ai/dsh-tools':
+  - 内核
+'@deepseek-ai/dsh-typert-loader':
+  - 框架
+'@deepseek-ai/dsh-typert-registry':
+  - 框架
+'@deepseek-ai/dsh-user-approval':
+  - 安全
+'@deepseek-ai/dsh-user-questions':
+  - 交互
+'@deepseek-ai/dsh-web':
+  - 网络
+'@deepseek-ai/dsh-web-app':
+  - 网络
+'@deepseek-ai/dsh-web-app/startup':
+  - 网络
+'@deepseek-ai/dsh-web-search-deepseek':
+  - 网络
+'@deepseek-ai/dsh-workflow-worker-thread':
+  - 工作流
+'@deepseek-ai/dsh-workspace':
+  - 工作区

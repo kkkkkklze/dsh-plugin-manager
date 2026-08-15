@@ -1,0 +1,461 @@
+// manager.js — dsh-plugin-manager 核心操作(agent 工具与 Web UI 共用同一份逻辑)
+import yaml from 'js-yaml'
+import { fileURLToPath } from 'node:url'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import { exec } from 'node:child_process'
+import { parsePatch, composePatch, isOwnRow, isOwnInsertRow, isOwnOverrideRow, slugify, FIBER_PHASE } from './engine.js'
+
+export const PLUGIN_NAME = 'dsh-plugin-manager'
+
+export const AUTO_TAG_RULES = [
+  [/^@deepseek-ai\/dsh-tool/, '工具'],
+  [/^@deepseek-ai\/dsh-llm/, 'LLM'],
+  [/^@deepseek-ai\/dsh-client-ui/, 'UI'],
+  [/^@deepseek-ai\/dsh-client/, '客户端'],
+  [/^@deepseek-ai\/dsh-host/, '服务端'],
+  [/^@deepseek-ai\/cordis/, '框架'],
+  [/^dsh-tool/, '工具'],
+]
+
+export function createManager(ctx, config) {
+  const name = PLUGIN_NAME
+  const log = (...args) => console.log('[' + name + ']', ...args)
+
+  let patchPath = null
+  if (config.patchFile && path.isAbsolute(config.patchFile)) {
+    patchPath = config.patchFile
+  } else if (ctx.baseUrl) {
+    try { patchPath = fileURLToPath(new URL(config.patchFile, ctx.baseUrl)) } catch {}
+  }
+  if (!patchPath) throw new Error(name + ': 无法定位 cordis.patch.yml')
+
+  const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+  const stateDir = path.join(dshHome, 'plugin-manager')
+  const statePath = path.join(stateDir, 'state.json')
+  const tagsPath = path.join(stateDir, 'tags.yml')
+  const rollbackPath = path.join(stateDir, 'rollback.json')
+  const presetsPath = path.join(dshHome, 'plugin-presets.yml')
+  const backupDir = path.join(stateDir, 'backups')
+
+  async function readState() {
+    let s
+    try { s = JSON.parse(await fs.readFile(statePath, 'utf8')) } catch { s = { inserted: {}, overrides: {} } }
+    s.inserted = s.inserted || {}
+    s.overrides = s.overrides || {}
+    // 管理器自己的行必须始终存在,否则 sync 会把它从 patch 里清掉(自卸载)
+    s.inserted['pm-manager'] = { name: PLUGIN_NAME }
+    return s
+  }
+  async function writeState(state) {
+    await fs.mkdir(stateDir, { recursive: true })
+    await fs.writeFile(statePath, JSON.stringify(state, null, 2), 'utf8')
+  }
+  async function readPresets() {
+    try {
+      const data = yaml.load(await fs.readFile(presetsPath, 'utf8'))
+      return data && typeof data === 'object' ? data : {}
+    } catch { return {} }
+  }
+  // 出厂标签库(随包分发,覆盖当前插件全集;合并优先级:用户 > bundle 声明 > 出厂库 > 自动规则)
+  const defaultTagsFile = fileURLToPath(new URL('./default-tags.yml', import.meta.url))
+  let defaultTagsCache = null
+  async function readDefaultTags() {
+    if (defaultTagsCache) return defaultTagsCache
+    try {
+      const data = yaml.load(await fs.readFile(defaultTagsFile, 'utf8'))
+      defaultTagsCache = data && typeof data === 'object' ? data : {}
+    } catch (e) { defaultTagsCache = {} }
+    return defaultTagsCache
+  }
+
+  // 出厂介绍库(简短中文介绍)
+  const defaultDescriptionsFile = fileURLToPath(new URL('./default-descriptions.yml', import.meta.url))
+  let defaultDescriptionsCache = null
+  async function readDefaultDescriptions() {
+    if (defaultDescriptionsCache) return defaultDescriptionsCache
+    try {
+      const data = yaml.load(await fs.readFile(defaultDescriptionsFile, 'utf8'))
+      defaultDescriptionsCache = data && typeof data === 'object' ? data : {}
+    } catch (e) { defaultDescriptionsCache = {} }
+    return defaultDescriptionsCache
+  }
+
+  async function readUserTags() {
+    try {
+      const data = yaml.load(await fs.readFile(tagsPath, 'utf8'))
+      return data && typeof data === 'object' ? data : {}
+    } catch { return {} }
+  }
+  async function writeUserTags(tags) {
+    await fs.mkdir(stateDir, { recursive: true })
+    await fs.writeFile(tagsPath, yaml.dump(tags, { noRefs: true }), 'utf8')
+  }
+
+  async function commit(previousState, nextState) {
+    await fs.mkdir(stateDir, { recursive: true })
+    await fs.writeFile(rollbackPath, JSON.stringify(previousState, null, 2), 'utf8')
+    await writeState(nextState)
+    await sync(nextState, previousState)
+  }
+
+  // legacy = 上一个状态;过滤时把新旧两态的覆盖行都视为我方行,避免 remove/rollback 残留
+  async function sync(state, legacy) {
+    let raw = ''
+    try { raw = await fs.readFile(patchPath, 'utf8') } catch { raw = '' }
+    const existing = parsePatch(raw)
+    const legacyOv = (legacy && legacy.overrides) || {}
+    const filter = { overrides: Object.assign({}, legacyOv, state.overrides) }
+    const kept = existing.filter((e) => !isOwnRow(e) && !isOwnInsertRow(e) && !isOwnOverrideRow(e, filter))
+    const text = composePatch(kept, state)
+    await fs.mkdir(backupDir, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    await fs.writeFile(path.join(backupDir, stamp + '.yml'), raw || '# (empty)\n', 'utf8')
+    const tmp = patchPath + '.tmp-' + process.pid
+    await fs.writeFile(tmp, text, 'utf8')
+    await fs.rename(tmp, patchPath)
+    return text
+  }
+
+  // loader 条目 id 带子树前缀(如 include:tools),patch 层用裸 id;从自身行推导前缀并剥离
+  function rawEntries() {
+    const rows = []
+    for (const entry of ctx.loader.entries()) {
+      if (entry.options && entry.options.group) continue
+      rows.push({
+        rawId: entry.id,
+        name: (entry.options && entry.options.name) || '',
+        disabled: !!entry.disabled,
+        phase: entry.fiber === undefined ? null : (FIBER_PHASE[entry.fiber.state] ?? 'unknown'),
+      })
+    }
+    return rows
+  }
+  const ownRaw = rawEntries().find((r) => r.name === PLUGIN_NAME)
+  const idPrefix = ownRaw && ownRaw.rawId.endsWith('pm-manager') ? ownRaw.rawId.slice(0, -('pm-manager'.length)) : ''
+  if (idPrefix) log('loader id prefix detected:', JSON.stringify(idPrefix))
+  function patchId(rawId) {
+    return idPrefix && rawId.startsWith(idPrefix) ? rawId.slice(idPrefix.length) : rawId
+  }
+  function entriesInfo() {
+    return rawEntries().map((r) => ({ id: patchId(r.rawId), name: r.name, disabled: r.disabled, phase: r.phase }))
+  }
+  function findRow(term) {
+    const rows = entriesInfo()
+    return rows.find((r) => r.id === term) || rows.find((r) => r.name === term) || null
+  }
+  function looksLikePackage(term) {
+    return term.startsWith('@') || term.includes('/') || term.includes('-')
+  }
+  function isSelf(row) {
+    return row.id === 'pm-manager' || row.name === name
+  }
+
+  async function bundleTagsFor(moduleName) {
+    if (!moduleName) return []
+    try {
+      let url = null
+      try { url = import.meta.resolve(moduleName) } catch { return [] }
+      let fp = url.startsWith('file:') ? fileURLToPath(url) : null
+      if (!fp) return []
+      let dir = path.extname(fp) ? path.dirname(fp) : fp
+      for (let i = 0; i < 12; i++) {
+        const pj = path.join(dir, 'package.json')
+        try {
+          const pkg = JSON.parse(await fs.readFile(pj, 'utf8'))
+          const tags = pkg && pkg.dsh && pkg.dsh.bundle && pkg.dsh.bundle.tags
+          return Array.isArray(tags) ? tags : []
+        } catch {}
+        const parent = path.dirname(dir)
+        if (parent === dir) break
+        dir = parent
+      }
+    } catch { return [] }
+    return []
+  }
+  async function tagsFor(row, userTags) {
+    const auto = AUTO_TAG_RULES.filter(([re]) => re.test(row.name)).map(([, t]) => t)
+    const defaults = await readDefaultTags()
+    const preset = defaults[row.name] || []
+    const bundle = await bundleTagsFor(row.name)
+    const user = userTags[row.name] || []
+    return [...new Set([...auto, ...preset, ...bundle, ...user])]
+  }
+
+  // ---- 操作(返回结构化结果;工具层转文本,UI 层转 JSON)----
+  async function opList({ tag } = {}) {
+    const userTags = await readUserTags()
+    const descriptions = await readDefaultDescriptions()
+    const rows = []
+    for (const r of entriesInfo()) {
+      const tags = await tagsFor(r, userTags)
+      if (tag && !tags.includes(tag)) continue
+      rows.push({ id: r.id, name: r.name, enabled: !r.disabled, phase: r.phase, tags, description: descriptions[r.name] || '' })
+    }
+    return { rows }
+  }
+
+  async function opToggle({ name: term, tag }, disabled) {
+    const state = await readState()
+    const prev = structuredClone(state)
+    if (!term && !tag) return { ok: false, text: '需要 name 或 tag 参数。' }
+    if (tag) {
+      const userTags = await readUserTags()
+      const targets = []
+      for (const r of entriesInfo()) {
+        if (isSelf(r)) continue
+        const tags = await tagsFor(r, userTags)
+        if (tags.includes(tag)) targets.push(r)
+      }
+      if (!targets.length) return { ok: false, text: '没有标签为「' + tag + '」的插件。' }
+      for (const r of targets) state.overrides[r.id] = { name: r.name, disabled }
+      await commit(prev, state)
+      return { ok: true, text: (disabled ? '已停用 ' : '已启用 ') + targets.length + ' 个「' + tag + '」插件: ' + targets.map((r) => r.id).join(', ') }
+    }
+    let row = findRow(term)
+    if (!row && looksLikePackage(term)) {
+      const id = 'pm.' + slugify(term)
+      if (!state.inserted[id]) state.inserted[id] = { name: term }
+      state.overrides[id] = { name: term, disabled }
+      await commit(prev, state)
+      return { ok: true, text: '已新增并' + (disabled ? '停用' : '启用') + ' ' + id + '(' + term + ')。' }
+    }
+    if (!row) return { ok: false, text: '未找到插件:' + term + '。' }
+    if (isSelf(row)) return { ok: false, text: '拒绝:不能启停管理器自身。' }
+    state.overrides[row.id] = { name: row.name, disabled }
+    await commit(prev, state)
+    const warn = row.id.startsWith('pm.') ? '' : '(内置/上层行,影响面较大)'
+    return { ok: true, text: (disabled ? '已停用 ' : '已启用 ') + row.id + '(' + row.name + ')。' + warn }
+  }
+
+  async function opAdd(pkg) {
+    const id = 'pm.' + slugify(pkg)
+    const state = await readState()
+    const prev = structuredClone(state)
+    if (state.inserted[id]) return { ok: false, text: '已存在:' + id }
+    state.inserted[id] = { name: pkg }
+    state.overrides[id] = { name: pkg, disabled: false }
+    await commit(prev, state)
+    return { ok: true, text: '已添加 ' + id + '(' + pkg + ')并启用。' }
+  }
+
+  async function opRemove(term) {
+    const state = await readState()
+    let targetId = null
+    if (state.inserted[term]) targetId = term
+    else {
+      const byName = Object.entries(state.inserted).find(([, v]) => v.name === term)
+      if (byName) targetId = byName[0]
+      else {
+        const row = findRow(term)
+        if (!row) return { ok: false, text: '未找到插件:' + term }
+        if (!row.id.startsWith('pm.')) return { ok: false, text: '只能移除 pm- 前缀的行;上层/内置行请停用。' }
+        targetId = row.id
+      }
+    }
+    if (targetId === 'pm-manager') return { ok: false, text: '拒绝:不能移除管理器自身。' }
+    const prev = structuredClone(state)
+    delete state.inserted[targetId]
+    delete state.overrides[targetId]
+    await commit(prev, state)
+    return { ok: true, text: '已移除 ' + targetId + '。' }
+  }
+
+  async function opTag(term, tagsText) {
+    const row = findRow(term)
+    if (!row) return { ok: false, text: '未找到插件:' + term }
+    const userTags = await readUserTags()
+    const current = new Set(userTags[row.name] || [])
+    for (const raw of String(tagsText).split(',')) {
+      const t = raw.trim()
+      if (!t) continue
+      if (t.startsWith('-')) current.delete(t.slice(1).trim())
+      else current.add(t)
+    }
+    userTags[row.name] = [...current]
+    await writeUserTags(userTags)
+    return { ok: true, text: '已更新 ' + row.name + ' 标签: ' + ([...current].join(' ') || '(空)') }
+  }
+
+  async function opPresetList() {
+    const presets = await readPresets()
+    const list = Object.entries(presets).map(([name_, p]) => ({
+      name: name_,
+      description: p.description || '',
+      refs: Array.isArray(p.plugins) ? p.plugins : [],
+    }))
+    return { presets: list, presetsPath }
+  }
+
+  async function opPresetSwitch(presetName) {
+    const presets = await readPresets()
+    const preset = presets[presetName]
+    if (!preset) return { ok: false, text: '预设不存在:' + presetName + '。' }
+    const refs = Array.isArray(preset.plugins) ? preset.plugins : []
+    const userTags = await readUserTags()
+    const rows = entriesInfo()
+    const targetIds = new Set()
+    const skipped = []
+    for (const item of refs) {
+      const s = String(item)
+      const tagRef = s.startsWith('tag:') ? s.slice(4) : (s.startsWith('#') ? s.slice(1) : null)
+      if (tagRef) {
+        for (const r of rows) {
+          if (isSelf(r)) continue
+          const tags = await tagsFor(r, userTags)
+          if (tags.includes(tagRef)) targetIds.add(r.id)
+        }
+        continue
+      }
+      const r = rows.find((x) => x.id === s) || rows.find((x) => x.name === s)
+      if (r) { if (!isSelf(r)) targetIds.add(r.id) } else skipped.push(s)
+    }
+    const state = await readState()
+    const prev = structuredClone(state)
+    const enabledList = []
+    const disabledList = []
+    for (const r of rows) {
+      if (isSelf(r)) continue
+      if (targetIds.has(r.id)) {
+        state.overrides[r.id] = { name: r.name, disabled: false }
+        enabledList.push(r.id)
+      } else {
+        state.overrides[r.id] = { name: r.name, disabled: true }
+        disabledList.push(r.id)
+      }
+    }
+    await commit(prev, state)
+    let text = '已切换到预设「' + presetName + '」。\n启用: ' + (enabledList.join(', ') || '(无)') + '\n停用: ' + (disabledList.join(', ') || '(无)')
+    if (skipped.length) text += '\n未找到(已跳过): ' + skipped.join(', ')
+    return { ok: true, text }
+  }
+
+  async function opAddPreset(name, description, plugins) {
+    const presets = await readPresets()
+    presets[name] = { description: description || '', plugins: Array.isArray(plugins) ? plugins : [] }
+    await fs.mkdir(path.dirname(presetsPath), { recursive: true })
+    await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
+    return { ok: true, text: '已添加插件包「' + name + '」。' }
+  }
+
+  async function opRemovePreset(name) {
+    const presets = await readPresets()
+    if (!(name in presets)) return { ok: false, text: '插件包不存在:' + name }
+    delete presets[name]
+    await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
+    return { ok: true, text: '已删除插件包「' + name + '」。' }
+  }
+
+  // 一键停止:先恢复内置插件清单(删替换覆盖行),再停用自身 —— UI 退化为 dsh 原版
+  // DeepSeek 余额(读 .credentials.yaml 的 DEEPSEEK_API_KEY,调官方 user/balance 接口)
+  async function opDeepseekBalance() {
+    let key = null
+    try {
+      const raw = await fs.readFile(path.join(dshHome, '.credentials.yaml'), 'utf8')
+      const m = raw.match(/^DEEPSEEK_API_KEY\s*:\s*(\S+)/m)
+      if (m) key = m[1].trim()
+    } catch (e) {}
+    if (!key) return { ok: false, text: '未找到 DEEPSEEK_API_KEY(.credentials.yaml)' }
+    try {
+      const res = await fetch('https://api.deepseek.com/user/balance', { headers: { Authorization: 'Bearer ' + key } })
+      const data = await res.json()
+      if (!res.ok) return { ok: false, text: '余额查询失败: ' + ((data && data.error && data.error.message) || res.status) }
+      const info = data && data.balance_infos && data.balance_infos[0]
+      const short = info ? (info.total_balance + ' ' + (info.currency || '')) : '查到了,但格式未知'
+      const detail = info ? ('DeepSeek 余额: ' + info.currency + ' 总额 ' + info.total_balance + '(赠送 ' + info.granted_balance + ' + 充值 ' + info.topped_up_balance + ')') : JSON.stringify(data)
+      return { ok: true, text: short, detail }
+    } catch (e) {
+      return { ok: false, text: '余额查询失败: ' + e.message }
+    }
+  }
+
+  // 整合包导出(含名字与介绍,分享给别人)
+  async function opExportPreset(name) {
+    const presets = await readPresets()
+    const p = presets[name]
+    if (!p) return { ok: false, text: '插件包不存在:' + name }
+    const doc = { name: name, description: p.description || '', plugins: Array.isArray(p.plugins) ? p.plugins : [] }
+    return { ok: true, text: yaml.dump(doc, { noRefs: true }) }
+  }
+
+  // 整合包导入(名字、介绍随包继承;同名覆盖)
+  async function opImportPreset(text) {
+    let doc = null
+    try { doc = yaml.load(String(text)) } catch (e) { try { doc = JSON.parse(String(text)) } catch (e2) {} }
+    if (!doc || typeof doc !== 'object' || !doc.name) return { ok: false, text: '导入失败:内容必须是含 name 的 YAML/JSON 整合包' }
+    const plugins = Array.isArray(doc.plugins) ? doc.plugins.map(String) : []
+    const presets = await readPresets()
+    const existed = presets[doc.name] !== undefined
+    presets[doc.name] = { description: String(doc.description || ''), plugins: plugins }
+    await fs.mkdir(path.dirname(presetsPath), { recursive: true })
+    await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
+    return { ok: true, text: (existed ? '已覆盖插件包「' : '已导入插件包「') + doc.name + '」(' + plugins.length + ' 项,名字与介绍已继承)' }
+  }
+
+  function opProfile() {
+    return path.basename(path.dirname(patchPath))
+  }
+
+  // 识别仓库是否为 dsh 插件:抓 package.json 查 dsh 清单
+  async function opMarketInspect(repo) {
+    const candidates = [repo + '/HEAD/package.json', repo + '/main/package.json', repo + '/master/package.json']
+    let pkg = null
+    for (const c of candidates) {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/' + c)
+        if (res.ok) { pkg = await res.json(); break }
+      } catch (e) {}
+    }
+    if (!pkg) return { ok: true, text: '无法读取 ' + repo + ' 的 package.json(仓库不存在或网络受限),未能自动识别。' }
+    const dshKeys = pkg.dsh ? Object.keys(pkg.dsh) : []
+    const isPlugin = dshKeys.length > 0 && (pkg.dsh.bundle || pkg.dsh.client)
+    const summary = '包名: ' + (pkg.name || '(无)') + '\n识别: ' + (isPlugin ? '是 dsh 插件(含 ' + dshKeys.join('/') + ')' : '非标准 dsh 插件(未发现 dsh.bundle/dsh.client)') + '\n建议: ' + (isPlugin ? '可安装到插件列表' : '交给会话让 agent 处理,或手动安装')
+    return { ok: true, text: summary, isPlugin }
+  }
+
+  // 插件市场:从 GitHub 安装(内部走 dsh plugin add github:<repo>)
+  async function opMarketInstall(repo) {
+    const profile = path.basename(path.dirname(patchPath))
+    const arg = 'dsh plugin --profile ' + profile + ' add github:' + repo
+    return new Promise((resolve) => {
+      exec(arg, { timeout: 180000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+        const out = String(stdout || '') + String(stderr || '')
+        const tail = out.trim().slice(-1200)
+        if (error) resolve({ ok: false, text: '安装失败: ' + (error.message || '') + (tail ? '\n' + tail : '') })
+        else resolve({ ok: true, text: '安装完成: github:' + repo + (tail ? '\n' + tail : '') })
+      })
+    })
+  }
+
+  async function opSelfStop(replaceIds) {
+    const state = await readState()
+    const prev = structuredClone(state)
+    for (const id of (Array.isArray(replaceIds) ? replaceIds : [replaceIds])) {
+      if (id) delete state.overrides[id]
+    }
+    state.overrides['pm-manager'] = { name: PLUGIN_NAME, disabled: true }
+    await commit(prev, state)
+    return { ok: true, text: '管理器已停止,界面恢复为 dsh 原版插件列表。重新启用:删除 profile 的 cordis.patch.yml 中 - id: pm-manager / disabled: true 一行。' }
+  }
+
+  async function opRollback() {
+    let snapshot = null
+    try { snapshot = JSON.parse(await fs.readFile(rollbackPath, 'utf8')) } catch { return { ok: false, text: '没有可回滚的快照。' } }
+    const current = await readState()
+    await writeState(snapshot)
+    await sync(snapshot, current)
+    try { await fs.unlink(rollbackPath) } catch {}
+    return { ok: true, text: '已回滚到上一步状态。' }
+  }
+
+  async function hasRollback() {
+    try { await fs.access(rollbackPath); return true } catch { return false }
+  }
+
+  return {
+    opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
+    patchPath, statePath, tagsPath, presetsPath, log,
+    internals: { readState, writeState, sync },
+  }
+}
