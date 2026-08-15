@@ -196,6 +196,20 @@ const afterStop = await fs.readFile(patchPath, 'utf8')
 check('自停后自身行 disabled:true', afterStop.includes('id: pm-manager') && /id: pm-manager\n\s+disabled: true/.test(afterStop.replace(/\r/g, '')))
 check('自停后内置清单覆盖已恢复(移除)', !afterStop.includes('ui-settings-plugin-inventory'))
 
+// 启动失败自动回退:切换成功后写入 lastSwitch;自检连续 2 次未确认 → 恢复切换前状态
+const statePathTmp = path.join(tmp, 'plugin-manager', 'state.json')
+const stAfterSwitch = JSON.parse(await fs.readFile(statePathTmp, 'utf8'))
+check('切换成功写入 lastSwitch 待确认标记', stAfterSwitch.lastSwitch && stAfterSwitch.lastSwitch.preset === '日常', JSON.stringify(stAfterSwitch.lastSwitch || null))
+const prevOv = { bash: { name: 'x', disabled: false } }
+await fs.writeFile(statePathTmp, JSON.stringify({ inserted: { 'pm-manager': { name: 'dsh-plugin-manager' } }, overrides: { ghost: { name: 'g', disabled: false } }, lastSwitch: { preset: '坏包', prev: { overrides: prevOv }, ts: Date.now() - 5000, attempts: 1 } }, null, 2), 'utf8')
+const sc = await managerForGw.internals.startupSelfCheck()
+check('自检判定上次启动失败并回退(rolled-back)', sc.status === 'rolled-back' && sc.preset === '坏包', JSON.stringify(sc))
+const stAfterRecover = JSON.parse(await fs.readFile(statePathTmp, 'utf8'))
+check('回退后 lastSwitch 已清除', !stAfterRecover.lastSwitch)
+check('回退后 overrides 恢复为 prev', JSON.stringify(stAfterRecover.overrides) === JSON.stringify(prevOv), JSON.stringify(stAfterRecover.overrides))
+const patchAfterRecover = await fs.readFile(patchPath, 'utf8')
+check('回退后 patch 同步 prev 状态', /id: bash\n\s+disabled: false/.test(patchAfterRecover.replace(/\r/g, '')))
+
 patchText = await fs.readFile(patchPath, 'utf8')
 check('用户行仍在', patchText.includes('@scope/foo'), '')
 check('管理器 insert 行仍在', patchText.includes('id: pm-manager'), '')

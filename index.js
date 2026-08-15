@@ -46,6 +46,8 @@ export function apply(ctx, config) {
         }
         if (changed) { await writeState(state); await syncState(state); m.log('已同步内置分区替换状态(分类列表)') }
       } catch (e) { m.log('替换内置分区失败(继续运行): ' + e.message) }
+      // 启动自检:上次整合包切换后启动失败(崩溃)→ 自动回退默认整合包,防止 boot 起不来
+      try { await m.internals.startupSelfCheck() } catch (e2) { m.log('启动自检异常(继续运行): ' + e2.message) }
     }
   })()
   const textOutput = { schema: { type: 'string' }, render: (_a, v) => [{ type: 'text', text: v }] }

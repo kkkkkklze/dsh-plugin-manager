@@ -345,6 +345,9 @@ export function createManager(ctx, config) {
       if (skipped.length) why.push('未安装: ' + skipped.join(', '))
       return { ok: false, text: '切换失败:' + why.join('; ') + '。已自动退回切换前状态。' }
     }
+    // 记录待确认切换:本次启动若崩溃(如插件冲突导致 boot 失败),下次启动将自动回退到切换前状态
+    state.lastSwitch = { preset: presetName, prev, ts: Date.now() }
+    await writeState(state)
     let text = '已切换到预设「' + presetName + '」。\n启用: ' + (enabledList.join(', ') || '(无)') + '\n停用: ' + (disabledList.join(', ') || '(无)')
     if (skipped.length) text += '\n未找到(已跳过): ' + skipped.join(', ')
     return { ok: true, text }
@@ -519,9 +522,37 @@ export function createManager(ctx, config) {
     try { await fs.access(rollbackPath); return true } catch { return false }
   }
 
+  // 启动自检:整合包切换后若启动崩溃(如插件冲突),lastSwitch 残留且 attempts>=2 → 自动回退到切换前状态(默认整合包)
+  async function startupSelfCheck() {
+    try {
+      const st = await readState()
+      if (!st.lastSwitch) return { status: 'clean' }
+      const ls = st.lastSwitch
+      ls.attempts = (ls.attempts || 0) + 1
+      if (ls.attempts >= 2) {
+        const prevOv = (ls.prev && ls.prev.overrides) || {}
+        log('检测到上次启动失败(整合包「' + ls.preset + '」连续 ' + ls.attempts + ' 次启动未确认),自动恢复切换前状态…')
+        const next = { inserted: st.inserted || {}, overrides: prevOv }
+        await writeState(next)
+        await sync(next, st)
+        log('已自动回退到切换前状态(默认整合包)。')
+        return { status: 'rolled-back', preset: ls.preset }
+      }
+      await writeState(st)
+      // 启动稳定确认:进程存活到 10s 说明本次启动成功,清除待确认标记
+      setTimeout(async () => {
+        try {
+          const s = await readState()
+          if (s.lastSwitch && s.lastSwitch.ts === ls.ts) { delete s.lastSwitch; await writeState(s); log('启动稳定,已确认整合包「' + ls.preset + '」') }
+        } catch (e) {}
+      }, 10000)
+      return { status: 'pending', preset: ls.preset, attempts: ls.attempts }
+    } catch (e) { log('启动自检失败(继续运行): ' + e.message); return { status: 'error' } }
+  }
+
   return {
     opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opBatchMarketInstall, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
     patchPath, statePath, tagsPath, presetsPath, log,
-    internals: { readState, writeState, sync },
+    internals: { readState, writeState, sync, startupSelfCheck },
   }
 }
