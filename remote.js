@@ -42,7 +42,7 @@ var __esDecorate = function (ctor, descriptorIn, decorators, contextIn, initiali
 }
 
 // 注意:方法名不能与客户端命名空间服务原型冲突(如 remove 已被占用),故移除行叫 removeRow
-const REMOTE_METHODS = ['list', 'presets', 'switchPreset', 'rollback', 'toggle', 'toggleByTag', 'tag', 'add', 'removeRow', 'addPreset', 'removePreset', 'stopSelf', 'marketInstall', 'profile', 'deepseekBalance', 'exportPreset', 'importPreset']
+const REMOTE_METHODS = ['list', 'presets', 'switchPreset', 'rollback', 'toggle', 'toggleByTag', 'tag', 'add', 'removeRow', 'addPreset', 'removePreset', 'stopSelf', 'marketInstall', 'batchInstall', 'profile', 'deepseekBalance', 'exportPreset', 'importPreset']
 
 // 工厂:闭包持有 manager,返回已装饰的网关类
 export function createGateway(manager, replaceIds) {
@@ -102,6 +102,9 @@ export function createGateway(manager, replaceIds) {
       }
       async marketInstall(repo) {
         return this.manager.opMarketInstall(repo)
+      }
+      async batchInstall(repos, pkgNames, presetName, presetDescription) {
+        return this.manager.opBatchMarketInstall(repos, pkgNames, presetName, presetDescription)
       }
       async profile() {
         return { profile: this.manager.opProfile() }

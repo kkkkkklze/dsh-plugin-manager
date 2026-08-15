@@ -55,6 +55,7 @@
             '.pm-selchips{display:flex;gap:6px;flex-wrap:wrap}',
             '.pm-selchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:2px 9px;color:var(--dsw-alias-label-primary)}',
             '.pm-selchip button{border:0;background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0;font-size:13px;line-height:1}',
+            '.pm-check{accent-color:var(--dsw-alias-state-business-primary);width:15px;height:15px;cursor:pointer;flex-shrink:0}',
             '.pm-toast{font-size:12px;color:var(--dsw-alias-label-tertiary);min-height:16px}',
             '.pm-toast.err{color:var(--dsw-alias-state-error-primary)}',
           ].join('\n')
@@ -103,6 +104,7 @@
             descriptor('removePreset', ['name']),
             descriptor('stopSelf', ['confirm']),
             descriptor('marketInstall', ['repo']),
+            descriptor('batchInstall', ['repos', 'pkgNames', 'presetName', 'presetDescription']),
             descriptor('profile', []),
             descriptor('deepseekBalance', []),
             descriptor('exportPreset', ['name']),
@@ -256,12 +258,15 @@
             var scanH = useState(false); var scanning = scanH[0]; var setScanning = scanH[1]
             var plugH = useState([]); var plugList = plugH[0]; var setPlugList = plugH[1]
             var scanDoneH = useState(false); var scanDone = scanDoneH[0]; var setScanDone = scanDoneH[1]
+            var selH = useState([]); var sel = selH[0]; var setSel = selH[1]
+            var batchH = useState(null); var batchModal = batchH[0]; var setBatchModal = batchH[1]
+            var batchResH = useState(null); var batchResult = batchResH[0]; var setBatchResult = batchResH[1]
             var scanSess = { list: [], page: 1, done: false }
 
             var enrich = function (repo) {
               return fetch('https://raw.githubusercontent.com/' + repo.full_name + '/' + (repo.default_branch || 'main') + '/package.json')
                 .then(function (r) { return r.ok ? r.json() : null })
-                .then(function (pkg) { repo.isPlugin = !!(pkg && pkg.dsh && (pkg.dsh.bundle || pkg.dsh.client)); return repo })
+                .then(function (pkg) { repo.isPlugin = !!(pkg && pkg.dsh && (pkg.dsh.bundle || pkg.dsh.client)); repo.pkgName = (pkg && pkg.name) || ''; return repo })
                 .catch(function () { repo.isPlugin = false; return repo })
             }
             var scanMore = function () {
@@ -335,6 +340,31 @@
             var doInstall = function (repo) {
               Promise.resolve(pm.marketInstall(repo)).then(function (r) { var u = unwrap(r); setToast(u.text); setErr(!u.ok); setBusy('') }).catch(function (e) { setToast(t('install') + ' ' + e.message); setErr(true); setBusy('') })
             }
+            var toggleSelRepo = function (repo) {
+              setSel(function (cur) {
+                return cur.some(function (x) { return x.full_name === repo.full_name })
+                  ? cur.filter(function (x) { return x.full_name !== repo.full_name })
+                  : cur.concat([repo])
+              })
+            }
+            var openBatch = function () {
+              setBatchModal({ name: '', desc: sel.map(function (r) { return r.full_name }).join('、') })
+            }
+            var doBatch = function () {
+              if (!batchModal || !batchModal.name.trim()) { setToast(t('batchNameRequired')); setErr(true); return }
+              setBusy('batch')
+              var repos = sel.map(function (r) { return r.full_name })
+              var names = sel.map(function (r) { return r.pkgName || '' })
+              var pname = batchModal.name.trim()
+              var pdesc = batchModal.desc.trim()
+              setBatchModal(null)
+              Promise.resolve(pm.batchInstall(repos, names, pname, pdesc)).then(function (r) {
+                var u = unwrap(r)
+                setBusy(''); setErr(!u.ok)
+                if (r.value && Array.isArray(r.value.results)) { setBatchResult(r.value); setToast(u.text) }
+                else { setToast(u.text); setSel([]) }
+              }).catch(function (e) { setBusy(''); setToast(t('batchInstall') + ' ' + e.message); setErr(true) })
+            }
             var install = function (repo) {
               setBusy(repo.full_name)
               inspectRepo(repo.full_name).then(function (info) {
@@ -370,9 +400,16 @@
               status === 'loading' ? React.createElement('div', { className: 'pm-toast' }, t('loading')) : null,
               status === 'error' ? React.createElement('div', { className: 'pm-toast err' }, t('marketError')) : null,
               scanning ? React.createElement('div', { className: 'pm-toast' }, t('scanning')) : null,
+              busy === 'batch' ? React.createElement('div', { className: 'pm-toast' }, t('batchBusy')) : null,
+              sel.length > 0 ? React.createElement('div', { className: 'pm-form' },
+                React.createElement('span', { className: 'pm-toast' }, t('batchSelected').replace('{n}', sel.length)),
+                React.createElement('button', { className: 'pm-btn primary', disabled: busy !== '', onClick: openBatch }, t('batchInstall')),
+                React.createElement('button', { className: 'pm-btn', disabled: busy !== '', onClick: function () { setSel([]) } }, t('batchClear'))
+              ) : null,
               React.createElement('div', { className: 'pm-list' },
                 shown.map(function (repo) {
                   return React.createElement('div', { key: repo.full_name, className: 'pm-row' },
+                    repo.isPlugin ? React.createElement('input', { type: 'checkbox', className: 'pm-check', checked: sel.some(function (x) { return x.full_name === repo.full_name }), disabled: busy !== '', onChange: function () { toggleSelRepo(repo) } }) : null,
                     React.createElement('div', { className: 'pm-main' },
                       React.createElement('a', { className: 'pm-name', href: repo.html_url, target: '_blank', rel: 'noreferrer' }, esc(repo.full_name)),
                       repo.description ? React.createElement('span', { className: 'pm-desc' }, esc(repo.description)) : null
@@ -409,6 +446,38 @@
                   React.createElement('div', { className: 'pm-pager' },
                     React.createElement('button', { className: 'pm-btn primary', onClick: function () { copyText(promptFor.prompt) } }, t('copy')),
                     React.createElement('button', { className: 'pm-btn', onClick: function () { setPromptFor(null) } }, t('close'))
+                  )
+                )
+              ) : null,
+              batchModal ? React.createElement('div', { className: 'pm-modal-overlay', onClick: function () { setBatchModal(null) } },
+                React.createElement('div', { className: 'pm-modal', onClick: function (ev) { ev.stopPropagation() } },
+                  React.createElement('div', { className: 'pm-heading' },
+                    React.createElement('h3', null, t('batchTitle')),
+                    React.createElement('span', { className: 'count' }, t('batchSelected').replace('{n}', sel.length))
+                  ),
+                  React.createElement('div', { className: 'pm-toast' }, t('batchNote').replace('{n}', sel.length)),
+                  React.createElement('input', { className: 'pm-input', placeholder: t('batchName'), value: batchModal.name, onChange: function (ev) { setBatchModal({ name: ev.target.value, desc: batchModal.desc }) } }),
+                  React.createElement('input', { className: 'pm-input', placeholder: t('batchDesc'), value: batchModal.desc, onChange: function (ev) { setBatchModal({ name: batchModal.name, desc: ev.target.value }) } }),
+                  React.createElement('div', { className: 'pm-pager' },
+                    React.createElement('button', { className: 'pm-btn primary', disabled: busy !== '', onClick: doBatch }, t('batchGo')),
+                    React.createElement('button', { className: 'pm-btn', onClick: function () { setBatchModal(null) } }, t('cancel'))
+                  )
+                )
+              ) : null,
+              batchResult ? React.createElement('div', { className: 'pm-modal-overlay', onClick: function () { setBatchResult(null); setSel([]) } },
+                React.createElement('div', { className: 'pm-modal', onClick: function (ev) { ev.stopPropagation() } },
+                  React.createElement('div', { className: 'pm-heading' },
+                    React.createElement('h3', null, t('batchResultTitle')),
+                    React.createElement('span', { className: 'count' }, batchResult.presetName ? esc(batchResult.presetName) : '')
+                  ),
+                  React.createElement('div', { className: 'pm-desc-full' },
+                    batchResult.results.map(function (x) { return React.createElement('div', { key: x.repo }, (x.ok ? '✅ ' : '❌ ') + esc(x.repo) + (x.ok ? '' : ' — ' + esc(String(x.text).split('\n')[0]))) })
+                  ),
+                  batchResult.presetName && batchResult.presetRefs && batchResult.presetRefs.length
+                    ? React.createElement('div', { className: 'pm-toast' }, t('presetCreated').replace('{name}', batchResult.presetName).replace('{n}', batchResult.presetRefs.length))
+                    : (batchResult.presetName ? React.createElement('div', { className: 'pm-toast' }, t('presetSkipped')) : null),
+                  React.createElement('div', { className: 'pm-pager' },
+                    React.createElement('button', { className: 'pm-btn primary', onClick: function () { setBatchResult(null); setSel([]) } }, t('close'))
                   )
                 )
               ) : null,
@@ -591,6 +660,14 @@
             promptTitle: '安装提示词(可复制)', copy: '复制', copied: '已复制,可粘贴到会话给 agent', close: '关闭',
             promptTemplate: '请帮我安装 GitHub 仓库 {repo} 作为 dsh 插件:\n1. 先用 plugin_market_inspect 识别它是否为标准 dsh 插件;\n2. 若确认可装,执行 dsh plugin --profile {profile} add github:{repo};\n3. 若装不上,说明原因并给出替代方案。',
             pager: '第 {p} / {n} 页', prev: '‹ 上一页', next: '下一页 ›', onlyPlugins: '只看插件', scanning: '正在识别插件…', loadedPlugins: '已加载 {n} 个插件', loadMore: '加载更多',
+            batchSelected: '已选 {n} 个', batchClear: '取消选择',
+            batchInstall: '批量安装并生成整合包', batchTitle: '批量安装并生成整合包',
+            batchName: '整合包名称', batchDesc: '整合包描述',
+            batchNote: '将依次安装所选 {n} 个插件,完成后自动生成整合包(可在「插件包」中一键切换、导出分享)。',
+            batchNameRequired: '请填写整合包名称', batchGo: '开始批量安装',
+            batchBusy: '正在批量安装…请勿关闭页面(每个插件可能要几分钟)。',
+            batchResultTitle: '批量安装结果', presetCreated: '整合包「{name}」已创建({n} 项)',
+            presetSkipped: '未检测到新插件条目,整合包未创建(重启 dsh 后生效,可在「插件包」中补建)',
           },
           en: {
             categoriesTab: 'Categories', bundlesTab: 'Bundles', marketTab: 'Market',
@@ -605,6 +682,14 @@
             promptTitle: 'Install prompt (copyable)', copy: 'Copy', copied: 'Copied — paste it to the agent in a session', close: 'Close',
             promptTemplate: 'Please help me install the GitHub repo {repo} as a dsh plugin:\n1. First identify it with plugin_market_inspect;\n2. If installable, run: dsh plugin --profile {profile} add github:{repo};\n3. If it fails, explain why and offer alternatives.',
             pager: 'Page {p} / {n}', prev: '‹ Prev', next: 'Next ›', onlyPlugins: 'Plugins only', scanning: 'Identifying plugins…', loadedPlugins: 'Loaded {n} plugins', loadMore: 'Load more',
+            batchSelected: '{n} selected', batchClear: 'Clear',
+            batchInstall: 'Batch install & create bundle', batchTitle: 'Batch install & create bundle',
+            batchName: 'Bundle name', batchDesc: 'Bundle description',
+            batchNote: 'Installs the {n} selected plugins sequentially, then creates a preset bundle (switch/export it later under Bundles).',
+            batchNameRequired: 'Please enter a bundle name', batchGo: 'Start batch install',
+            batchBusy: 'Batch installing… keep this page open (each plugin may take minutes).',
+            batchResultTitle: 'Batch install results', presetCreated: 'Bundle "{name}" created ({n} items)',
+            presetSkipped: 'No new plugin entries detected; bundle not created (restart dsh, then create it under Bundles).',
           },
         }
         function apply(ctx) {

@@ -428,6 +428,53 @@ export function createManager(ctx, config) {
     })
   }
 
+  // 批量安装:依次 dsh plugin add github:<repo>,结束后 diff 新条目并生成整合包(refs 优先用新条目 id,失败则退回包名)
+  async function opBatchMarketInstall(repos, pkgNames, presetName, presetDescription) {
+    const list = Array.isArray(repos) ? repos.map(String).filter(Boolean) : []
+    if (!list.length) return { ok: false, text: '未选择任何插件。' }
+    const profile = path.basename(path.dirname(patchPath))
+    const before = entriesInfo()
+    const results = []
+    for (const repo of list) {
+      const arg = 'dsh plugin --profile ' + profile + ' add github:' + repo
+      const r = await new Promise((resolve) => {
+        exec(arg, { timeout: 180000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+          const out = String(stdout || '') + String(stderr || '')
+          const tail = out.trim().slice(-1200)
+          if (error) resolve({ ok: false, text: (error.message || '') + (tail ? '\n' + tail : '') })
+          else resolve({ ok: true, text: tail || '安装完成' })
+        })
+      })
+      results.push({ repo, ok: r.ok, text: r.text })
+    }
+    // 等 loader 重读 patch 后再 diff
+    await new Promise((res) => setTimeout(res, 800))
+    const after = entriesInfo()
+    const newRows = after.filter((a) => !before.some((b) => b.id === a.id && b.name === a.name))
+    const refs = newRows.map((x) => x.id)
+    const nameRefs = (Array.isArray(pkgNames) ? pkgNames : []).map(String).filter(Boolean)
+    const presetRefs = refs.length ? refs : nameRefs
+    let presetText = ''
+    const pname = String(presetName || '').trim()
+    if (pname) {
+      if (!presetRefs.length) {
+        presetText = '未检测到新插件条目,整合包未创建(重启 dsh 后插件生效,再到「插件包」里补建)。'
+      } else {
+        const presets = await readPresets()
+        presets[pname] = { description: String(presetDescription || ''), plugins: presetRefs }
+        await fs.mkdir(path.dirname(presetsPath), { recursive: true })
+        await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
+        presetText = '整合包「' + pname + '」已创建(' + presetRefs.length + ' 项)。'
+      }
+    }
+    const okCount = results.filter((x) => x.ok).length
+    const failCount = results.length - okCount
+    const lines = results.map((x) => (x.ok ? '✅ ' : '❌ ') + x.repo + (x.ok ? '' : ' | ' + x.text.split(/\r?\n/)[0]))
+    let text = '批量安装完成:' + okCount + ' 成功,' + failCount + ' 失败。\n' + lines.join('\n')
+    if (pname && presetText) text += '\n' + presetText
+    return { ok: failCount === 0, text, results, presetRefs, presetName: pname || '' }
+  }
+
   async function opSelfStop(replaceIds) {
     const state = await readState()
     const prev = structuredClone(state)
@@ -454,7 +501,7 @@ export function createManager(ctx, config) {
   }
 
   return {
-    opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
+    opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opBatchMarketInstall, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
     patchPath, statePath, tagsPath, presetsPath, log,
     internals: { readState, writeState, sync },
   }
