@@ -311,7 +311,7 @@ export function createManager(ctx, config) {
       const r = rows.find((x) => x.id === s) || rows.find((x) => x.name === s)
       if (r) { if (!isSelf(r)) targetIds.add(r.id) } else skipped.push(s)
     }
-    const state = await readState()
+      const state = await readState()
     const prev = structuredClone(state)
     const enabledList = []
     const disabledList = []
@@ -326,6 +326,25 @@ export function createManager(ctx, config) {
       }
     }
     await commit(prev, state)
+    // 切换后验证:等 loader 重载,目标插件缺失或 failed 即判定失败 → 自动退回切换前状态
+    await new Promise((res) => setTimeout(res, config.waitMs || 3000))
+    const after = entriesInfo()
+    const failed = []
+    const missing = []
+    for (const id of targetIds) {
+      const row = after.find((x) => x.id === id)
+      if (!row) missing.push(id)
+      else if (row.phase === 'failed') failed.push(id)
+    }
+    if (failed.length || missing.length || skipped.length) {
+      await writeState(prev)
+      await sync(prev, state)
+      const why = []
+      if (missing.length) why.push('未加载(可能未安装或需重启): ' + missing.join(', '))
+      if (failed.length) why.push('加载失败: ' + failed.join(', '))
+      if (skipped.length) why.push('未安装: ' + skipped.join(', '))
+      return { ok: false, text: '切换失败:' + why.join('; ') + '。已自动退回切换前状态。' }
+    }
     let text = '已切换到预设「' + presetName + '」。\n启用: ' + (enabledList.join(', ') || '(无)') + '\n停用: ' + (disabledList.join(', ') || '(无)')
     if (skipped.length) text += '\n未找到(已跳过): ' + skipped.join(', ')
     return { ok: true, text }

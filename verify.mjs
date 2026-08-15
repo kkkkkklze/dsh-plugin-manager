@@ -103,7 +103,7 @@ const fakeCtx = {
     { id: 'include:user-row', options: { name: '@scope/foo' }, disabled: false, fiber: undefined },
   ] },
 }
-apply(fakeCtx, { patchFile: patchPath })
+apply(fakeCtx, { patchFile: patchPath, waitMs: 10 })
 await new Promise((r) => setTimeout(r, 150)) // 等启动时的替换同步完成
 const byName = Object.fromEntries(tools.map((t) => [t.name, t]))
 check('注册 12 个工具', tools.length === 12, '实际 ' + tools.length)
@@ -139,7 +139,7 @@ check('拒绝移除自身', rRm.includes('拒绝'), rRm)
 // ============ 第二层补:Typert 远程服务 ============
 console.log('--- 远程层 ---')
 const gwCtx = { baseUrl: 'file:///C:/tmp/', reflect: { provide: () => {} }, effect: () => {}, on: () => {}, loader: fakeCtx.loader }
-const managerForGw = await (async () => { const { createManager } = await import('./manager.js'); return createManager(gwCtx, { patchFile: patchPath }) })()
+const managerForGw = await (async () => { const { createManager } = await import('./manager.js'); return createManager(gwCtx, { patchFile: patchPath, waitMs: 10 }) })()
 const Gateway = createGateway(managerForGw, ['ui-settings-plugin-inventory', 'ui-settings-plugins'])
 const gw = new Gateway(gwCtx)
 check('网关服务名 pluginManager', gw.name === 'pluginManager')
@@ -153,6 +153,17 @@ const gwSw = await gw.switchPreset('日常')
 check('远程 switchPreset ok', gwSw.ok === true)
 const gwRb = await gw.rollback()
 check('远程 rollback ok', gwRb.ok === true)
+// 切换失败自动退回(引用不存在的插件 → 应判定失败并回退)
+const gwSw2 = await gw.switchPreset('日常')
+check('远程 switchPreset(二次) ok', gwSw2.ok === true, gwSw2.text)
+const gwBad = await gw.addPreset('坏包', '含不存在插件', ['ghost'])
+check('addPreset 坏包成功', gwBad.ok === true)
+const gwBadSw = await gw.switchPreset('坏包')
+check('切换坏包自动退回(ok:false+文案)', gwBadSw.ok === false && String(gwBadSw.text).includes('自动退回'), gwBadSw.text)
+const afterBad = await fs.readFile(patchPath, 'utf8')
+check('回退后 patch 保留日常切换的启用行', /id: tools\n\s+disabled: false/.test(afterBad.replace(/\r/g, '')), afterBad.split('\n').slice(0, 12).join('|'))
+const gwRmBad = await gw.removePreset('坏包')
+check('清理坏包成功', gwRmBad.ok === true)
 const gwTag = await gw.tag('tools', 'AI')
 check('远程 tag ok', gwTag.ok === true)
 const gwAddP = await gw.addPreset('验收包', 'desc', ['tools'])

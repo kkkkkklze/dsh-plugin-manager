@@ -654,7 +654,7 @@
             }, [])
             useEffect(function () { load(); loadAll() }, [load, loadAll])
             var act = function (p) { Promise.resolve(p).then(function (r) { var u = unwrap(r); setToast(u.text); setErr(!u.ok); load() }).catch(function (e) { setToast('失败: ' + e.message); setErr(true) }) }
-            var switchScene = function (p) { if (!window.confirm('接入插件包「' + p.name + '」?\n将停用包外插件(管理器除外),可回滚。')) return; act(pm.switchPreset(p.name)) }
+            var switchScene = function (p) { if (!window.confirm('接入插件包「' + p.name + '」?\n将停用包外插件(管理器除外)。\n若目标插件缺失或加载失败,将自动退回当前状态。')) return; act(pm.switchPreset(p.name)) }
             var removePreset = function (p) { if (!window.confirm('删除插件包「' + p.name + '」?')) return; act(pm.removePreset(p.name)) }
             var editPreset = function (p) { setName(p.name); setDesc(p.description || ''); setSel((p.refs || []).slice()); setPicker(true) }
             var resetForm = function () { setName(''); setDesc(''); setSel([]); setPicker(false); setPq(''); setPt(null) }
