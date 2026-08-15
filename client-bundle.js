@@ -257,17 +257,45 @@
             var onlyH = useState(true); var only = onlyH[0]; var setOnly = onlyH[1]
             var scanH = useState(false); var scanning = scanH[0]; var setScanning = scanH[1]
             var plugH = useState([]); var plugList = plugH[0]; var setPlugList = plugH[1]
+            var curH = useState(false); var cur = curH[0]; var setCur = curH[1]
+            var curListH = useState([]); var curList = curListH[0]; var setCurList = curListH[1]
+            var curPageH = useState(0); var curPage = curPageH[0]; var setCurPage = curPageH[1]
+            var curTotalH = useState(0); var curTotal = curTotalH[0]; var setCurTotal = curTotalH[1]
+            var curBusyH = useState(false); var curBusy = curBusyH[0]; var setCurBusy = curBusyH[1]
             var scanDoneH = useState(false); var scanDone = scanDoneH[0]; var setScanDone = scanDoneH[1]
             var selH = useState([]); var sel = selH[0]; var setSel = selH[1]
             var batchH = useState(null); var batchModal = batchH[0]; var setBatchModal = batchH[1]
             var batchResH = useState(null); var batchResult = batchResH[0]; var setBatchResult = batchResH[1]
             var scanSess = { list: [], page: 1, done: false }
 
-            var enrich = function (repo) {
-              return fetch('https://raw.githubusercontent.com/' + repo.full_name + '/' + (repo.default_branch || 'main') + '/package.json')
+            var fetchPkg = function (base, path) {
+              return fetch('https://raw.githubusercontent.com/' + base + '/' + path)
                 .then(function (r) { return r.ok ? r.json() : null })
-                .then(function (pkg) { repo.isPlugin = !!(pkg && pkg.dsh && (pkg.dsh.bundle || pkg.dsh.client)); repo.pkgName = (pkg && pkg.name) || ''; return repo })
-                .catch(function () { repo.isPlugin = false; return repo })
+                .catch(function () { return null })
+            }
+            // 升级识别:优先分支+子目录 → 根 → HEAD → main → master(审计:精选列表 32 个插件在子目录,仅试根会漏)
+            var identify = function (obj, branch, subdir) {
+              var b = branch || 'HEAD'
+              var tries = []
+              if (subdir) tries.push(b + '/' + subdir + '/package.json')
+              tries.push(b + '/package.json')
+              if (tries.indexOf('HEAD/package.json') < 0) tries.push('HEAD/package.json')
+              if (tries.indexOf('main/package.json') < 0) tries.push('main/package.json')
+              if (tries.indexOf('master/package.json') < 0) tries.push('master/package.json')
+              var chain = tries.reduce(function (acc, p) {
+                return acc.then(function (r) { return r ? r : fetchPkg(obj.full_name, p).then(function (pkg) { return pkg ? { pkg: pkg, path: p } : null }) })
+              }, Promise.resolve(null))
+              return chain.then(function (hit) {
+                var pkg = hit ? hit.pkg : null
+                obj.isPlugin = !!(pkg && pkg.dsh && (pkg.dsh.bundle || pkg.dsh.client))
+                obj.pkgName = (pkg && pkg.name) || ''
+                obj.dshKeys = pkg && pkg.dsh ? Object.keys(pkg.dsh) : []
+                obj.dshKind = pkg && pkg.dsh && pkg.dsh.bundle && pkg.dsh.client ? 'bundle+client' : (pkg && pkg.dsh && pkg.dsh.bundle ? 'bundle' : (pkg && pkg.dsh && pkg.dsh.client ? 'client' : (pkg ? 'no-dsh' : 'no-pkg')))
+                return obj
+              })
+            }
+            var enrich = function (repo) {
+              return identify(repo, repo.default_branch || 'main', null)
             }
             var scanMore = function () {
               if (scanning || scanSess.done) return
@@ -310,6 +338,48 @@
             }, [t])
             useEffect(function () { if (only) { beginScan() } else { load(0) } }, [])
             var goPage = function (p) { setPage(p); load(p) }
+            var parseCurated = function (text) {
+              var out = []
+              var section = ''
+              var re = /^-\s*\[([^\]]+)\]\((https?:\/\/github\.com\/([^\/\s)]+)\/([^\/\s)#)]+)([^)]*))\)/
+              var lines = text.split(/\r?\n/)
+              for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim()
+                if (/^#{2,4}\s/.test(line)) { section = line.replace(/^#{2,4}\s*/, '').trim(); continue }
+                var m = line.match(re)
+                if (!m) continue
+                var frag = null, subdir = null, branchHint = null
+                var fm = m[5].match(/#([^)]*)/)
+                if (fm && fm[1].trim()) frag = fm[1].trim()
+                var tm = m[5].match(/\/tree\/([^/]+)(?:\/(.+))?/)
+                if (tm) { branchHint = tm[1]; subdir = tm[2] || null }
+                var desc = (line.match(/^-\s*\[[^\]]+\]\([^)]*\)\s*-\s*(.*)$/) || [])[1] || ''
+                var key = m[3] + '/' + m[4]
+                if (out.some(function (x) { return x.full_name === key })) continue
+                out.push({ full_name: key, name: m[1], owner: m[3], repo: m[4], frag: frag, subdir: subdir, branchHint: branchHint, section: section, description: desc, isPlugin: null, dshKind: '', html_url: 'https://github.com/' + key, stargazers_count: '' })
+              }
+              return out
+            }
+            var loadCurated = function (p) {
+              setCurBusy(true)
+              var done = function (all) {
+                setCurTotal(all.length)
+                var pageItems = all.slice(p * 30, (p + 1) * 30)
+                Promise.all(pageItems.map(function (x) { return identify(x, x.branchHint || 'HEAD', x.subdir || x.frag || null) })).then(function () {
+                  setCurList(all); setCurBusy(false)
+                }).catch(function () { setCurBusy(false) })
+              }
+              if (curList.length) { done(curList); return }
+              fetch('https://raw.githubusercontent.com/awesome-dsh-plugin/awesome-dsh-plugin/main/README.md')
+                .then(function (r) { return r.ok ? r.text() : null })
+                .then(function (text) { if (!text) { setCurBusy(false); setToast(t('marketError')); return } var all = parseCurated(text); done(all) })
+                .catch(function () { setCurBusy(false); setToast(t('marketError')); setErr(true) })
+            }
+            var switchSource = function (toCur) {
+              setCur(toCur); setPage(0); setCurPage(0); setSel([])
+              if (toCur) loadCurated(0)
+              else load(0)
+            }
             var copyText = function (t) {
               var done = function () { setToast(t('copied')) }
               if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, function () { legacyCopy(t); done() }) }
@@ -366,6 +436,15 @@
               }).catch(function (e) { setBusy(''); setToast(t('batchInstall') + ' ' + e.message); setErr(true) })
             }
             var install = function (repo) {
+              if (repo.isPlugin === true) {
+                // 已识别为插件:直接进确认弹窗,跳过 inspect(子目录插件也适用)
+                Promise.resolve(pm.profile()).then(function (pr) {
+                  var profile = (pr && pr.value && pr.value.profile) || 'web'
+                  var method = 'dsh plugin add github:' + repo.full_name
+                  setConfirmFor({ repo: repo.full_name, profile: profile, method: method, verdict: t('verdictPlugin') + (repo.dshKind ? ' (' + repo.dshKind + ')' : ''), effect: repo.description || t('effect') })
+                })
+                return
+              }
               setBusy(repo.full_name)
               inspectRepo(repo.full_name).then(function (info) {
                 var pkg = info && info.pkg
@@ -388,17 +467,20 @@
             }
 
             var plugins = repos.filter(function (r) { return r.isPlugin })
-            var shown = only ? plugList : repos
+            var shown = cur ? curList : (only ? plugList : repos)
             var totalPages = Math.max(1, Math.ceil(total / 30))
             var body = React.createElement('div', { className: 'pm-section' },
               React.createElement('div', { className: 'pm-heading' },
                 React.createElement('h3', null, t('marketTitle')),
-                React.createElement('span', { className: 'count' }, t('marketCount').replace('{n}', total)),
-                React.createElement('button', { className: 'pm-btn' + (only ? ' primary' : ''), onClick: function () { var nxt = !only; setOnly(nxt); if (nxt) { beginScan() } else { load(page) } } }, t('onlyPlugins') + ' (' + (only ? plugList.length : plugins.length) + ')'),
-                React.createElement('button', { className: 'pm-btn', onClick: function () { load(page) } }, t('refresh'))
+                React.createElement('span', { className: 'count' }, cur ? t('curatedCount').replace('{n}', curTotal) : t('marketCount').replace('{n}', total)),
+                React.createElement('button', { className: 'pm-btn' + (cur ? '' : ' primary'), onClick: function () { switchSource(false) } }, t('marketTopic')),
+                React.createElement('button', { className: 'pm-btn' + (cur ? ' primary' : ''), onClick: function () { switchSource(true) } }, t('marketCurated')),
+                cur ? null : React.createElement('button', { className: 'pm-btn' + (only ? ' primary' : ''), onClick: function () { var nxt = !only; setOnly(nxt); if (nxt) { beginScan() } else { load(page) } } }, t('onlyPlugins') + ' (' + (only ? plugList.length : plugins.length) + ')'),
+                React.createElement('button', { className: 'pm-btn', onClick: function () { if (cur) { loadCurated(curPage) } else { load(page) } } }, t('refresh'))
               ),
               status === 'loading' ? React.createElement('div', { className: 'pm-toast' }, t('loading')) : null,
               status === 'error' ? React.createElement('div', { className: 'pm-toast err' }, t('marketError')) : null,
+              curBusy ? React.createElement('div', { className: 'pm-toast' }, t('scanning')) : null,
               scanning ? React.createElement('div', { className: 'pm-toast' }, t('scanning')) : null,
               busy === 'batch' ? React.createElement('div', { className: 'pm-toast' }, t('batchBusy')) : null,
               sel.length > 0 ? React.createElement('div', { className: 'pm-form' },
@@ -414,7 +496,9 @@
                       React.createElement('a', { className: 'pm-name', href: repo.html_url, target: '_blank', rel: 'noreferrer' }, esc(repo.full_name)),
                       repo.description ? React.createElement('span', { className: 'pm-desc' }, esc(repo.description)) : null
                     ),
-                    React.createElement('span', { className: 'pm-phase' }, '★ ' + repo.stargazers_count),
+                    (cur
+                      ? React.createElement('span', { className: 'pm-phase' }, (repo.dshKind ? esc(repo.dshKind) + ' · ' : '') + esc(repo.section || ''))
+                      : React.createElement('span', { className: 'pm-phase' }, '★ ' + repo.stargazers_count)),
                     React.createElement('button', { className: 'pm-btn primary', disabled: busy !== '', onClick: function () { install(repo) } }, busy === repo.full_name ? t('checking') : t('install'))
                   )
                 })
@@ -481,7 +565,13 @@
                   )
                 )
               ) : null,
-              only
+              cur
+                ? React.createElement('div', { className: 'pm-pager' },
+                    React.createElement('button', { className: 'pm-btn', disabled: curPage === 0 || curBusy, onClick: function () { var p = curPage - 1; setCurPage(p); loadCurated(p) } }, t('prev')),
+                    React.createElement('span', null, t('pager').replace('{p}', curPage + 1).replace('{n}', Math.max(1, Math.ceil(curTotal / 30)))),
+                    React.createElement('button', { className: 'pm-btn', disabled: curPage >= Math.ceil(curTotal / 30) - 1 || curBusy, onClick: function () { var p = curPage + 1; setCurPage(p); loadCurated(p) } }, t('next'))
+                  )
+                : (only
                 ? React.createElement('div', { className: 'pm-pager' },
                     React.createElement('span', null, t('loadedPlugins').replace('{n}', plugList.length) + (scanning ? ' · ' + t('scanning') : '')),
                     !scanDone && !scanning ? React.createElement('button', { className: 'pm-btn', onClick: scanMore }, t('loadMore')) : null
@@ -490,7 +580,8 @@
                     React.createElement('button', { className: 'pm-btn', disabled: page === 0, onClick: function () { goPage(page - 1) } }, t('prev')),
                     React.createElement('span', null, t('pager').replace('{p}', page + 1).replace('{n}', totalPages)),
                     React.createElement('button', { className: 'pm-btn', disabled: page >= totalPages - 1, onClick: function () { goPage(page + 1) } }, t('next'))
-                  ),
+                  )),
+
               React.createElement('div', { className: 'pm-toast' + (err ? ' err' : '') }, esc(toast))
             )
             return ErrorBoundary ? React.createElement(ErrorBoundary, null, body) : body
@@ -660,6 +751,7 @@
             promptTitle: '安装提示词(可复制)', copy: '复制', copied: '已复制,可粘贴到会话给 agent', close: '关闭',
             promptTemplate: '请帮我安装 GitHub 仓库 {repo} 作为 dsh 插件:\n1. 先用 plugin_market_inspect 识别它是否为标准 dsh 插件;\n2. 若确认可装,执行 dsh plugin --profile {profile} add github:{repo};\n3. 若装不上,说明原因并给出替代方案。',
             pager: '第 {p} / {n} 页', prev: '‹ 上一页', next: '下一页 ›', onlyPlugins: '只看插件', scanning: '正在识别插件…', loadedPlugins: '已加载 {n} 个插件', loadMore: '加载更多',
+            marketTopic: 'Topic 搜索', marketCurated: 'Awesome 精选', curatedCount: '精选 {n} 个(来自 awesome-dsh-plugin 列表)',
             batchSelected: '已选 {n} 个', batchClear: '取消选择',
             batchInstall: '批量安装并生成整合包', batchTitle: '批量安装并生成整合包',
             batchName: '整合包名称', batchDesc: '整合包描述',
@@ -682,6 +774,7 @@
             promptTitle: 'Install prompt (copyable)', copy: 'Copy', copied: 'Copied — paste it to the agent in a session', close: 'Close',
             promptTemplate: 'Please help me install the GitHub repo {repo} as a dsh plugin:\n1. First identify it with plugin_market_inspect;\n2. If installable, run: dsh plugin --profile {profile} add github:{repo};\n3. If it fails, explain why and offer alternatives.',
             pager: 'Page {p} / {n}', prev: '‹ Prev', next: 'Next ›', onlyPlugins: 'Plugins only', scanning: 'Identifying plugins…', loadedPlugins: 'Loaded {n} plugins', loadMore: 'Load more',
+            marketTopic: 'Topic search', marketCurated: 'Awesome curated', curatedCount: '{n} curated (from awesome-dsh-plugin list)',
             batchSelected: '{n} selected', batchClear: 'Clear',
             batchInstall: 'Batch install & create bundle', batchTitle: 'Batch install & create bundle',
             batchName: 'Bundle name', batchDesc: 'Bundle description',
