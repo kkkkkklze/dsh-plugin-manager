@@ -273,15 +273,49 @@
                 .then(function (r) { return r.ok ? r.json() : null })
                 .catch(function () { return null })
             }
-            // 升级识别:优先分支+子目录 → 根 → HEAD → main → master(审计:精选列表 32 个插件在子目录,仅试根会漏)
+            // 限流并发:同一时间最多 limit 个识别请求(30 仓库×多路径突发会触发 raw 限流→假 404→误判非插件)
+            var mapLimit = function (arr, limit, fn) {
+              var i = 0
+              var worker = function () {
+                if (i >= arr.length) return Promise.resolve()
+                var idx = i++
+                return Promise.resolve(fn(arr[idx])).then(worker)
+              }
+              var ws = []
+              for (var w = 0; w < Math.min(limit, arr.length); w++) ws.push(worker())
+              return Promise.all(ws).then(function () { return arr })
+            }
+            // 搜索页缓存(sessionStorage,10 分钟):刷新不重复打 search API(未认证限 10 次/分)
+            var searchPage = function (page) {
+              var url = 'https://api.github.com/search/repositories?q=topic:dsh-plugin&sort=stars&order=desc&per_page=30&page=' + page
+              var key = 'pm-search-' + page
+              try {
+                var c = JSON.parse(sessionStorage.getItem(key) || 'null')
+                if (c && Date.now() - c.ts < 600000) return Promise.resolve(c)
+              } catch (e) {}
+              return fetch(url, { headers: { Accept: 'application/vnd.github+json' } })
+                .then(function (r) { return r.ok ? r.json() : null })
+                .then(function (j) {
+                  var res = { items: (j && j.items) || [], total: (j && j.total_count) || 0 }
+                  try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), items: res.items, total: res.total })) } catch (e2) {}
+                  return res
+                })
+            }
+            // 识别:最多 2 个候选(优先 分支(+子目录) → HEAD 万能回退;审计证明 HEAD 对 748 仓库全有效),结果缓存 1 小时
             var identify = function (obj, branch, subdir) {
+              var key = obj.full_name + (subdir ? '@' + subdir : '')
+              try {
+                var c = JSON.parse(sessionStorage.getItem('pm-id-' + key) || 'null')
+                if (c && Date.now() - c.ts < 3600000) {
+                  obj.isPlugin = c.isPlugin; obj.pkgName = c.pkgName || ''; obj.dshKeys = c.dshKeys || []; obj.dshKind = c.dshKind || ''
+                  return Promise.resolve(obj)
+                }
+              } catch (e) {}
               var b = branch || 'HEAD'
               var tries = []
               if (subdir) tries.push(b + '/' + subdir + '/package.json')
               tries.push(b + '/package.json')
               if (tries.indexOf('HEAD/package.json') < 0) tries.push('HEAD/package.json')
-              if (tries.indexOf('main/package.json') < 0) tries.push('main/package.json')
-              if (tries.indexOf('master/package.json') < 0) tries.push('master/package.json')
               var chain = tries.reduce(function (acc, p) {
                 return acc.then(function (r) { return r ? r : fetchPkg(obj.full_name, p).then(function (pkg) { return pkg ? { pkg: pkg, path: p } : null }) })
               }, Promise.resolve(null))
@@ -291,6 +325,7 @@
                 obj.pkgName = (pkg && pkg.name) || ''
                 obj.dshKeys = pkg && pkg.dsh ? Object.keys(pkg.dsh) : []
                 obj.dshKind = pkg && pkg.dsh && pkg.dsh.bundle && pkg.dsh.client ? 'bundle+client' : (pkg && pkg.dsh && pkg.dsh.bundle ? 'bundle' : (pkg && pkg.dsh && pkg.dsh.client ? 'client' : (pkg ? 'no-dsh' : 'no-pkg')))
+                try { sessionStorage.setItem('pm-id-' + key, JSON.stringify({ ts: Date.now(), isPlugin: obj.isPlugin, pkgName: obj.pkgName, dshKeys: obj.dshKeys, dshKind: obj.dshKind })) } catch (e2) {}
                 return obj
               })
             }
@@ -300,21 +335,18 @@
             var scanMore = function () {
               if (scanning || scanSess.done) return
               setScanning(true)
-              fetch('https://api.github.com/search/repositories?q=topic:dsh-plugin&sort=stars&order=desc&per_page=30&page=' + scanSess.page, { headers: { Accept: 'application/vnd.github+json' } })
-                .then(function (r) { return r.json() })
-                .then(function (j) {
-                  var items = j.items || []
-                  if (!items.length) { scanSess.done = true; setScanDone(true); setScanning(false); return }
-                  return Promise.all(items.map(enrich)).then(function (done) {
-                    var plugs = done.filter(function (r) { return r.isPlugin })
-                    scanSess.list = scanSess.list.concat(plugs)
-                    scanSess.page += 1
-                    setPlugList(scanSess.list.slice())
-                    setScanning(false)
-                    if (scanSess.list.length < 30 && scanSess.page <= 10) scanMore()
-                  })
+              searchPage(scanSess.page).then(function (res) {
+                var items = res.items
+                if (!items.length) { scanSess.done = true; setScanDone(true); setScanning(false); return }
+                return mapLimit(items, 6, enrich).then(function (done) {
+                  var plugs = done.filter(function (r) { return r.isPlugin })
+                  scanSess.list = scanSess.list.concat(plugs)
+                  scanSess.page += 1
+                  setPlugList(scanSess.list.slice())
+                  setScanning(false)
+                  if (scanSess.list.length < 30 && scanSess.page <= 3) scanMore()
                 })
-                .catch(function (e) { setScanning(false); setToast(t('marketError') + ': ' + e.message); setErr(true) })
+              }).catch(function (e) { setScanning(false); setToast(t('marketError') + ': ' + e.message); setErr(true) })
             }
             var beginScan = function () {
               scanSess = { list: [], page: 1, done: false }
@@ -324,16 +356,12 @@
 
             var load = useCallback(function (p) {
               setStatus('loading'); setScanning(true)
-              fetch('https://api.github.com/search/repositories?q=topic:dsh-plugin&sort=stars&order=desc&per_page=30&page=' + (p + 1), { headers: { Accept: 'application/vnd.github+json' } })
-                .then(function (r) { return r.json() })
-                .then(function (j) {
-                  var items = j.items || []
-                  setRepos(items)
-                  setTotal(j.total_count || 0)
-                  setStatus('ready')
-                  return Promise.all(items.map(enrich))
-                })
-                .then(function (done) { setRepos(done); setScanning(false) })
+              searchPage(p + 1).then(function (res) {
+                setRepos(res.items)
+                setTotal(res.total)
+                setStatus('ready')
+                return mapLimit(res.items, 6, enrich)
+              }).then(function (done) { setRepos(done); setScanning(false) })
                 .catch(function (e) { setStatus('error'); setScanning(false); setToast(t('marketError') + ': ' + e.message); setErr(true) })
             }, [t])
             useEffect(function () { if (only) { beginScan() } else { load(0) } }, [])
@@ -365,14 +393,21 @@
               var done = function (all) {
                 setCurTotal(all.length)
                 var pageItems = all.slice(p * 30, (p + 1) * 30)
-                Promise.all(pageItems.map(function (x) { return identify(x, x.branchHint || 'HEAD', x.subdir || x.frag || null) })).then(function () {
+                mapLimit(pageItems, 6, function (x) { return identify(x, x.branchHint || 'HEAD', x.subdir || x.frag || null) }).then(function () {
                   setCurList(all); setCurBusy(false)
                 }).catch(function () { setCurBusy(false) })
               }
               if (curList.length) { done(curList); return }
+              try {
+                var cr = sessionStorage.getItem('pm-curated')
+                if (cr) {
+                  var cj = JSON.parse(cr)
+                  if (cj && Date.now() - cj.ts < 3600000) { done(cj.list); return }
+                }
+              } catch (e) {}
               fetch('https://raw.githubusercontent.com/awesome-dsh-plugin/awesome-dsh-plugin/main/README.md')
                 .then(function (r) { return r.ok ? r.text() : null })
-                .then(function (text) { if (!text) { setCurBusy(false); setToast(t('marketError')); return } var all = parseCurated(text); done(all) })
+                .then(function (text) { if (!text) { setCurBusy(false); setToast(t('marketError')); return } var all = parseCurated(text); try { sessionStorage.setItem('pm-curated', JSON.stringify({ ts: Date.now(), list: all })) } catch (e2) {} done(all) })
                 .catch(function () { setCurBusy(false); setToast(t('marketError')); setErr(true) })
             }
             var switchSource = function (toCur) {
