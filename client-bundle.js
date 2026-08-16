@@ -94,6 +94,7 @@
             descriptor('list', []),
             descriptor('presets', []),
             descriptor('switchPreset', ['presetName']),
+            descriptor('switchPresets', ['names']),
             descriptor('rollback', []),
             descriptor('toggle', ['name', 'disabled']),
             descriptor('toggleByTag', ['tag', 'disabled']),
@@ -664,6 +665,8 @@
             var modalH = useState(null); var modal = modalH[0]; var setModal = modalH[1]
             var importTextH = useState(''); var importText = importTextH[0]; var setImportText = importTextH[1]
             var noteH = useState(null); var note = noteH[0]; var setNote = noteH[1]
+            var selBundlesH = useState([]); var selBundles = selBundlesH[0]; var setSelBundles = selBundlesH[1]
+            var multiH = useState(false); var multi = multiH[0]; var setMulti = multiH[1]
 
             var load = useCallback(function () {
               Promise.resolve(pm.presets()).then(function (r) {
@@ -689,6 +692,18 @@
               }).catch(function (e) { setToast('失败: ' + e.message); setErr(true) })
             }
             var removePreset = function (p) { if (!window.confirm('删除插件包「' + p.name + '」?')) return; act(pm.removePreset(p.name)) }
+            var toggleSelBundle = function (name) {
+              setSelBundles(function (cur) { return cur.indexOf(name) >= 0 ? cur.filter(function (x) { return x !== name }) : cur.concat([name]) })
+            }
+            var switchMulti = function () {
+              if (selBundles.length < 2) { setToast('请至少选择两个整合包'); setErr(true); return }
+              if (!window.confirm('同时启用所选 ' + selBundles.length + ' 个整合包?\n将启用它们的插件并集(重复插件只启用一次),包外插件停用。\n若任一引用不可用将自动退回当前状态。')) return
+              Promise.resolve(pm.switchPresets(selBundles.slice())).then(function (r) {
+                var u = unwrap(r)
+                setToast(u.text); setErr(!u.ok); load()
+                if (r.value && Array.isArray(r.value.skippedInfo) && r.value.skippedInfo.length) setNote({ preset: selBundles.join(' + '), skipped: r.value.skippedInfo, prompt: r.value.promptText || '' })
+              }).catch(function (e) { setToast('失败: ' + e.message); setErr(true) })
+            }
             var editPreset = function (p) { setName(p.name); setDesc(p.description || ''); setSel((p.refs || []).slice()); setPicker(true) }
             var resetForm = function () { setName(''); setDesc(''); setSel([]); setPicker(false); setPq(''); setPt(null) }
             var save = function () {
@@ -766,9 +781,15 @@
                   )
                 }))
               ) : null,
+              multi ? React.createElement('div', { className: 'pm-form' },
+                React.createElement('span', { className: 'pm-toast' }, t('multiSelected').replace('{n}', selBundles.length)),
+                React.createElement('button', { className: 'pm-btn primary', onClick: switchMulti }, t('multiEnable')),
+                React.createElement('button', { className: 'pm-btn', onClick: function () { setSelBundles([]); setMulti(false) } }, t('multiExit'))
+              ) : null,
               React.createElement('div', { className: 'pm-list' },
                 presets.map(function (p) {
                   return React.createElement('div', { key: p.name, className: 'pm-row' },
+                    multi ? React.createElement('input', { type: 'checkbox', className: 'pm-check', checked: selBundles.indexOf(p.name) >= 0, onChange: function () { toggleSelBundle(p.name) } }) : null,
                     React.createElement('div', { className: 'pm-main' },
                       React.createElement('span', { className: 'pm-name' }, esc(p.name)),
                       React.createElement('span', { className: 'pm-desc-full' }, esc(p.description || '—'))
@@ -776,7 +797,8 @@
                     React.createElement('span', { className: 'pm-phase' }, p.refs.length + ' 项'),
                     React.createElement('button', { className: 'pm-btn', onClick: function () { doExport(p) } }, '导出'),
                     React.createElement('button', { className: 'pm-btn', onClick: function () { editPreset(p) } }, '编辑'),
-                    React.createElement('button', { className: 'pm-btn primary', onClick: function () { switchScene(p) } }, '一键切换'),
+                    multi ? null : React.createElement('button', { className: 'pm-btn primary', onClick: function () { switchScene(p) } }, '一键切换'),
+                    React.createElement('button', { className: 'pm-btn', onClick: function () { setMulti(true); toggleSelBundle(p.name) } }, '多选'),
                     React.createElement('button', { className: 'pm-btn danger', onClick: function () { removePreset(p) } }, '删除')
                   )
                 })
@@ -854,6 +876,7 @@
             batchResultTitle: '批量安装结果', presetCreated: '整合包「{name}」已创建({n} 项)',
             presetSkipped: '未检测到新插件条目,整合包未创建(重启 dsh 后生效,可在「插件包」中补建)',
             switchUnavailableTitle: '部分插件不可用',
+            multiSelected: '已选 {n} 个整合包', multiEnable: '同时启用所选(并集去重)', multiExit: '退出多选',
             switchUnavailableNote: '该整合包有以下引用无法启用,已自动退回当前状态。可复制安装提示词给会话中的 agent 处理:',
             copyPrompt: '复制安装提示词',
           },
@@ -881,6 +904,7 @@
             batchResultTitle: 'Batch install results', presetCreated: 'Bundle "{name}" created ({n} items)',
             presetSkipped: 'No new plugin entries detected; bundle not created (restart dsh, then create it under Bundles).',
             switchUnavailableTitle: 'Some refs unavailable',
+            multiSelected: '{n} bundles selected', multiEnable: 'Enable selected (union)', multiExit: 'Exit multi-select',
             switchUnavailableNote: 'These refs in the bundle cannot be enabled; state rolled back. Copy the install prompt and hand it to the agent in a session:',
             copyPrompt: 'Copy install prompt',
           },

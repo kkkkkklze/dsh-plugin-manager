@@ -317,11 +317,8 @@ export function createManager(ctx, config) {
     return lines.join('\n')
   }
 
-  async function opPresetSwitch(presetName) {
-    const presets = await readPresets()
-    const preset = presets[presetName]
-    if (!preset) return { ok: false, text: '预设不存在:' + presetName + '。' }
-    const refs = Array.isArray(preset.plugins) ? preset.plugins : []
+  // 切换核心:把 refs(已去重并集)解析为启停集合并执行切换 + 验证 + 双保险回退;label 用于文案(单包名或「A + B」)
+  async function switchToRefs(refs, label) {
     const userTags = await readUserTags()
     const rows = entriesInfo()
     const targetIds = new Set()
@@ -375,15 +372,40 @@ export function createManager(ctx, config) {
       // 识别不可用引用并生成提示词(仅识别仓库形态;网络失败降级 unknown)
       const profile = opProfile()
       const skippedInfo = await Promise.all(skipped.map((s) => inspectRef(s, profile).catch(() => ({ ref: s, kind: 'unknown', reason: '识别失败' }))))
-      const promptText = skipped.length ? buildPrompt(skippedInfo, presetName) : ''
+      const promptText = skipped.length ? buildPrompt(skippedInfo, label) : ''
       return { ok: false, text: '切换失败:' + why.join('; ') + '。已自动退回切换前状态。', skippedInfo, promptText }
     }
     // 记录待确认切换:本次启动若崩溃(如插件冲突导致 boot 失败),下次启动将自动回退到切换前状态
-    state.lastSwitch = { preset: presetName, prev, ts: Date.now() }
+    state.lastSwitch = { preset: label, prev, ts: Date.now() }
     await writeState(state)
-    let text = '已切换到预设「' + presetName + '」。\n启用: ' + (enabledList.join(', ') || '(无)') + '\n停用: ' + (disabledList.join(', ') || '(无)')
+    let text = '已切换到「' + label + '」。\n启用: ' + (enabledList.join(', ') || '(无)') + '\n停用: ' + (disabledList.join(', ') || '(无)')
     if (skipped.length) text += '\n未找到(已跳过): ' + skipped.join(', ')
     return { ok: true, text }
+  }
+
+  async function opPresetSwitch(presetName) {
+    const presets = await readPresets()
+    const preset = presets[presetName]
+    if (!preset) return { ok: false, text: '预设不存在:' + presetName + '。' }
+    const refs = Array.isArray(preset.plugins) ? preset.plugins : []
+    return switchToRefs(refs, presetName)
+  }
+
+  // 多选整合包同时启用:并集去重(重复插件只启用一次),包外插件停用;任一引用不可用则整体回退
+  async function opPresetSwitchMulti(names) {
+    const list = Array.isArray(names) ? names.map(String).filter(Boolean) : []
+    if (!list.length) return { ok: false, text: '未选择整合包。' }
+    const presets = await readPresets()
+    const missing = list.filter((n) => !(n in presets))
+    if (missing.length) return { ok: false, text: '整合包不存在:' + missing.join(', ') }
+    const refs = []
+    for (const n of list) {
+      for (const item of (Array.isArray(presets[n].plugins) ? presets[n].plugins : [])) {
+        const s = String(item)
+        if (!refs.includes(s)) refs.push(s)
+      }
+    }
+    return switchToRefs(refs, list.join(' + '))
   }
 
   // 预设名校验:非空字符串、长度受限、拒绝保留键(防原型链/序列化异常)
@@ -617,7 +639,7 @@ export function createManager(ctx, config) {
   }
 
   return {
-    opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opBatchMarketInstall, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
+    opList, opToggle, opAdd, opRemove, opTag, opPresetList, opPresetSwitch, opPresetSwitchMulti, opRollback, opAddPreset, opRemovePreset, opSelfStop, opMarketInstall, opMarketInspect, opBatchMarketInstall, opProfile, opDeepseekBalance, opExportPreset, opImportPreset, hasRollback,
     patchPath, statePath, tagsPath, presetsPath, log,
     internals: { readState, writeState, sync, startupSelfCheck },
   }
