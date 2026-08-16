@@ -1,5 +1,7 @@
 <div align="center">
 
+![dsh-plugin-manager](docs/ad.png)
+
 # 🎛️ dsh-plugin-manager
 
 **在 DeepSeek Harness 网页里直接管理插件:分类列表 · 标签 · 预设一键切换 · 插件市场 · 导入导出 · 余额**
@@ -22,10 +24,6 @@ Manage your DeepSeek Harness plugins right inside the web UI.
 - 🛡️ **权限与安全** — 变更操作走审批(agent 工具)与确认弹窗(Web);一键停止后可优雅退化为 dsh 原版插件列表;
 - 💰 **余额与快捷入口** — 侧边栏显示 DeepSeek 余额(点击跳用量页)+ Chat 按钮;
 - 🤖 **agent 工具** — `plugin_list / plugin_enable / plugin_disable / plugin_add / plugin_remove / plugin_tag / plugin_preset_list / plugin_preset_switch / plugin_rollback / plugin_stop_self / plugin_market_inspect / plugin_market_install`。
-
-## 📸 预览 / Preview
-
-![dsh-plugin-manager 预览](docs/preview.png)
 
 ## 🔧 安装 / Install
 
