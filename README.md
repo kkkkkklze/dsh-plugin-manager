@@ -21,7 +21,7 @@ Manage your DeepSeek Harness plugins right inside the web UI.
 - 📂 **分类列表** — 内置 128 个插件预分类(23 个标签族)+ 中文简介,搜索 / 筛选 / 启停 / 标签编辑;
 - 📦 **插件包(预设)** — 点选插件组成整合包,一键切换 + 回滚,支持**导入 / 导出**(名字与介绍随包继承,方便分享);
 - 🛒 **插件市场** — 浏览 GitHub `dsh-plugin` 主题仓库,自动识别真插件,一键安装;非插件给出可复制的安装提示词;
-- 🛡️ **权限与安全** — 变更操作走审批(agent 工具)与确认弹窗(Web);市场安装参数**白名单校验**(owner/repo 格式,防命令注入);一键停止后可优雅退化为 dsh 原版插件列表;
+- 🛡️ **权限与安全** — 变更操作走审批(agent 工具)与确认弹窗(Web);市场安装参数**白名单校验**(owner/repo 格式,防命令注入);预设名**保留键/长度校验**、导入**256KB 上限**;一键停止后可优雅退化为 dsh 原版插件列表;
 - 💰 **余额与快捷入口** — 侧边栏显示 DeepSeek 余额(点击跳用量页)+ Chat 按钮;
 - 🤖 **agent 工具** — `plugin_list / plugin_enable / plugin_disable / plugin_add / plugin_remove / plugin_tag / plugin_preset_list / plugin_preset_switch / plugin_rollback / plugin_stop_self / plugin_market_inspect / plugin_market_install`。
 

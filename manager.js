@@ -296,7 +296,7 @@ export function createManager(ctx, config) {
     let netFail = false
     for (const c of [norm + '/HEAD/package.json', norm + '/main/package.json', norm + '/master/package.json']) {
       try {
-        const res = await fetch('https://raw.githubusercontent.com/' + c)
+        const res = await fetch('https://raw.githubusercontent.com/' + c, { signal: AbortSignal.timeout(10000) })
         if (res.ok) { pkg = await res.json(); break }
       } catch (e) { netFail = true }
     }
@@ -386,12 +386,22 @@ export function createManager(ctx, config) {
     return { ok: true, text }
   }
 
+  // 预设名校验:非空字符串、长度受限、拒绝保留键(防原型链/序列化异常)
+  function validPresetName(name) {
+    const s = String(name || '').trim()
+    if (!s || s.length > 100) return null
+    if (['__proto__', 'constructor', 'prototype'].includes(s)) return null
+    return s
+  }
+
   async function opAddPreset(name, description, plugins) {
+    const safeName = validPresetName(name)
+    if (!safeName) return { ok: false, text: '非法预设名:' + name }
     const presets = await readPresets()
-    presets[name] = { description: description || '', plugins: Array.isArray(plugins) ? plugins : [] }
+    presets[safeName] = { description: String(description || '').slice(0, 2000), plugins: Array.isArray(plugins) ? plugins.map(String).slice(0, 500) : [] }
     await fs.mkdir(path.dirname(presetsPath), { recursive: true })
     await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
-    return { ok: true, text: '已添加插件包「' + name + '」。' }
+    return { ok: true, text: '已添加插件包「' + safeName + '」。' }
   }
 
   async function opRemovePreset(name) {
@@ -434,18 +444,22 @@ export function createManager(ctx, config) {
     return { ok: true, text: yaml.dump(doc, { noRefs: true }) }
   }
 
-  // 整合包导入(名字、介绍随包继承;同名覆盖)
+  // 整合包导入(名字、介绍随包继承;同名覆盖;输入大小限制防滥用)
   async function opImportPreset(text) {
+    const raw = String(text || '')
+    if (raw.length > 262144) return { ok: false, text: '导入失败:内容超过 256KB 限制' }
     let doc = null
-    try { doc = yaml.load(String(text)) } catch (e) { try { doc = JSON.parse(String(text)) } catch (e2) {} }
+    try { doc = yaml.load(raw) } catch (e) { try { doc = JSON.parse(raw) } catch (e2) {} }
     if (!doc || typeof doc !== 'object' || !doc.name) return { ok: false, text: '导入失败:内容必须是含 name 的 YAML/JSON 整合包' }
-    const plugins = Array.isArray(doc.plugins) ? doc.plugins.map(String) : []
+    const safeName = validPresetName(doc.name)
+    if (!safeName) return { ok: false, text: '导入失败:非法预设名:' + doc.name }
+    const plugins = Array.isArray(doc.plugins) ? doc.plugins.map(String).slice(0, 500) : []
     const presets = await readPresets()
-    const existed = presets[doc.name] !== undefined
-    presets[doc.name] = { description: String(doc.description || ''), plugins: plugins }
+    const existed = presets[safeName] !== undefined
+    presets[safeName] = { description: String(doc.description || '').slice(0, 2000), plugins: plugins }
     await fs.mkdir(path.dirname(presetsPath), { recursive: true })
     await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
-    return { ok: true, text: (existed ? '已覆盖插件包「' : '已导入插件包「') + doc.name + '」(' + plugins.length + ' 项,名字与介绍已继承)' }
+    return { ok: true, text: (existed ? '已覆盖插件包「' : '已导入插件包「') + safeName + '」(' + plugins.length + ' 项,名字与介绍已继承)' }
   }
 
   function opProfile() {
@@ -520,7 +534,7 @@ export function createManager(ctx, config) {
     const nameRefs = (Array.isArray(pkgNames) ? pkgNames : []).map(String).filter(Boolean)
     const presetRefs = refs.length ? refs : nameRefs
     let presetText = ''
-    const pname = String(presetName || '').trim()
+    const pname = validPresetName(presetName)
     if (pname) {
       if (!presetRefs.length) {
         presetText = '未检测到新插件条目,整合包未创建(重启 dsh 后插件生效,再到「插件包」里补建)。'

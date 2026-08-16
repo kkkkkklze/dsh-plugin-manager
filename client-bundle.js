@@ -378,9 +378,9 @@
                 if (!m) continue
                 var frag = null, subdir = null, branchHint = null
                 var fm = m[5].match(/#([^)]*)/)
-                if (fm && fm[1].trim()) frag = fm[1].trim()
+                if (fm && fm[1].trim()) { frag = fm[1].trim(); if (!/^[\w.-]+(\/[\w.-]+)*$/.test(frag)) frag = null }
                 var tm = m[5].match(/\/tree\/([^/]+)(?:\/(.+))?/)
-                if (tm) { branchHint = tm[1]; subdir = tm[2] || null }
+                if (tm) { branchHint = tm[1]; subdir = tm[2] || null; if (subdir && !/^[\w.-]+(\/[\w.-]+)*$/.test(subdir)) subdir = null }
                 var desc = (line.match(/^-\s*\[[^\]]+\]\([^)]*\)\s*-\s*(.*)$/) || [])[1] || ''
                 var key = m[3] + '/' + m[4]
                 if (out.some(function (x) { return x.full_name === key })) continue
