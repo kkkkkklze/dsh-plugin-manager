@@ -452,8 +452,16 @@ export function createManager(ctx, config) {
     return path.basename(path.dirname(patchPath))
   }
 
+  // 仓库名白名单校验:仅允许 GitHub owner/repo 合法字符(字母数字 _ . - 和单个 /),防命令注入(exec 拼接)
+  const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+  function validRepo(repo) {
+    const s = String(repo || '').trim()
+    return REPO_RE.test(s) && s.length <= 200 && !s.includes('..')
+  }
+
   // 识别仓库是否为 dsh 插件:抓 package.json 查 dsh 清单
   async function opMarketInspect(repo) {
+    if (!validRepo(repo)) return { ok: false, text: '非法仓库名:' + repo + '(应为 owner/repo 格式,仅含字母数字 . _ -)' }
     const candidates = [repo + '/HEAD/package.json', repo + '/main/package.json', repo + '/master/package.json']
     let pkg = null
     for (const c of candidates) {
@@ -469,10 +477,11 @@ export function createManager(ctx, config) {
     return { ok: true, text: summary, isPlugin }
   }
 
-  // 插件市场:从 GitHub 安装(内部走 dsh plugin add github:<repo>)
+  // 插件市场:从 GitHub 安装(内部走 dsh plugin add github:<repo>;repo 白名单校验防命令注入)
   async function opMarketInstall(repo) {
+    if (!validRepo(repo)) return { ok: false, text: '非法仓库名:' + repo + '(应为 owner/repo 格式,仅含字母数字 . _ -)' }
     const profile = path.basename(path.dirname(patchPath))
-    const arg = 'dsh plugin --profile ' + profile + ' add github:' + repo
+    const arg = 'dsh plugin --profile ' + profile + ' add github:' + String(repo).trim()
     return new Promise((resolve) => {
       exec(arg, { timeout: 180000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
         const out = String(stdout || '') + String(stderr || '')
@@ -485,8 +494,9 @@ export function createManager(ctx, config) {
 
   // 批量安装:依次 dsh plugin add github:<repo>,结束后 diff 新条目并生成整合包(refs 优先用新条目 id,失败则退回包名)
   async function opBatchMarketInstall(repos, pkgNames, presetName, presetDescription) {
-    const list = Array.isArray(repos) ? repos.map(String).filter(Boolean) : []
-    if (!list.length) return { ok: false, text: '未选择任何插件。' }
+    const list = Array.isArray(repos) ? repos.map(String).filter(Boolean).filter((r) => validRepo(r)) : []
+    const rejected = Array.isArray(repos) ? repos.map(String).filter((r) => r && !validRepo(r)) : []
+    if (!list.length) return { ok: false, text: '未选择任何合法插件。' + (rejected.length ? ' 已拒绝非法仓库名: ' + rejected.join(', ') : '') }
     const profile = path.basename(path.dirname(patchPath))
     const before = entriesInfo()
     const results = []
