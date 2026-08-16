@@ -51,4 +51,6 @@ export function slugify(name) {
   return String(name).replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+// Fiber 状态映射,与官方 dsh-host-plugin-inventory/lib/types/index.js 的 FIBER_STATE 一致:
+// PENDING=0 LOADING=1 ACTIVE=2 FAILED=3 DISPOSED=4 UNLOADING=5;DISPOSED 官方显示为 null(UI 显示 '-')。
 export const FIBER_PHASE = { 0: 'pending', 1: 'loading', 2: 'active', 3: 'failed', 4: null, 5: 'unloading' }

@@ -12,6 +12,8 @@ export const Config = Schema.object({
   // M4:运行期间用本插件替换内置「插件」区;自停时自动恢复原版 UI
   replaceInventoryId: Schema.string().default('ui-settings-plugin-inventory'),
   replaceInventoryOnStart: Schema.boolean().default(true),
+  // 切换整合包后的 loader 重载等待时间(毫秒),用于失败检测;此前仅在 manager 内部读取、未声明在 schema 中(Schemastery 非 strict 透传才生效)
+  waitMs: Schema.number().default(3000),
 })
 
 export function apply(ctx, config) {
