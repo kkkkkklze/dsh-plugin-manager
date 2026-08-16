@@ -537,13 +537,22 @@ export function createManager(ctx, config) {
     const pname = validPresetName(presetName)
     if (pname) {
       if (!presetRefs.length) {
-        presetText = '未检测到新插件条目,整合包未创建(重启 dsh 后插件生效,再到「插件包」里补建)。'
+        presetText = '未检测到新插件条目,整合包未更新(重启 dsh 后插件生效,再到「插件包」里补建/并入)。'
       } else {
         const presets = await readPresets()
-        presets[pname] = { description: String(presetDescription || ''), plugins: presetRefs }
+        const existing = presets[pname]
+        if (existing && Array.isArray(existing.plugins)) {
+          // 加入现有整合包:追加去重,保留原描述
+          const merged = [...new Set([...existing.plugins.map(String), ...presetRefs])]
+          presets[pname] = { description: String(existing.description || ''), plugins: merged }
+          presetText = '已并入现有整合包「' + pname + '」(' + merged.length + ' 项,新增 ' + presetRefs.length + ' 项)。'
+        } else {
+          // 新建整合包
+          presets[pname] = { description: String(presetDescription || '').slice(0, 2000), plugins: presetRefs }
+          presetText = '已新建整合包「' + pname + '」(' + presetRefs.length + ' 项)。'
+        }
         await fs.mkdir(path.dirname(presetsPath), { recursive: true })
         await fs.writeFile(presetsPath, yaml.dump(presets, { noRefs: true }), 'utf8')
-        presetText = '整合包「' + pname + '」已创建(' + presetRefs.length + ' 项)。'
       }
     }
     const okCount = results.filter((x) => x.ok).length

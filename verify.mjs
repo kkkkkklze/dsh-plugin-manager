@@ -207,6 +207,7 @@ check('marketInstall 拒绝命令注入(&&)', inj2.ok === false && String(inj2.t
 const inj3 = await gw.marketInstall('foo/..\\bar')
 check('marketInstall 拒绝路径穿越', inj3.ok === false, inj3.text)
 check('远程含 batchInstall 方法(批量安装+生成整合包)', typeof gw.batchInstall === 'function')
+check('client 批量三模式(仅安装/加入现有/新建)', clientSrc.includes('batchModeNone') && clientSrc.includes('batchModeExisting') && clientSrc.includes('batchModeNew'))
 const gwBatchEmpty = await gw.batchInstall([], [], '', '')
 check('远程 batchInstall 空列表安全拒绝', gwBatchEmpty.ok === false && String(gwBatchEmpty.text).includes('未选择'), gwBatchEmpty.text)
 check('远程含 profile 方法', typeof gw.profile === 'function')

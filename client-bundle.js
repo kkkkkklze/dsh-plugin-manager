@@ -452,16 +452,27 @@
                   : cur.concat([repo])
               })
             }
+            var batchPresetsH = useState([]); var batchPresets = batchPresetsH[0]; var setBatchPresets = batchPresetsH[1]
             var openBatch = function () {
-              setBatchModal({ name: '', desc: sel.map(function (r) { return r.full_name }).join('、') })
+              setBatchModal({ mode: 'none', name: '', desc: sel.map(function (r) { return r.full_name }).join('、'), target: '' })
+              Promise.resolve(pm.presets()).then(function (r) {
+                if (r && r.ok && r.value && Array.isArray(r.value.presets)) setBatchPresets(r.value.presets)
+              }).catch(function () {})
             }
             var doBatch = function () {
-              if (!batchModal || !batchModal.name.trim()) { setToast(t('batchNameRequired')); setErr(true); return }
+              if (!batchModal) return
+              var pname = '', pdesc = ''
+              if (batchModal.mode === 'existing') {
+                if (!batchModal.target) { setToast(t('batchTargetRequired')); setErr(true); return }
+                pname = batchModal.target
+              } else if (batchModal.mode === 'new') {
+                if (!batchModal.name.trim()) { setToast(t('batchNameRequired')); setErr(true); return }
+                pname = batchModal.name.trim()
+                pdesc = batchModal.desc.trim()
+              }
               setBusy('batch')
               var repos = sel.map(function (r) { return r.full_name })
               var names = sel.map(function (r) { return r.pkgName || '' })
-              var pname = batchModal.name.trim()
-              var pdesc = batchModal.desc.trim()
               setBatchModal(null)
               Promise.resolve(pm.batchInstall(repos, names, pname, pdesc)).then(function (r) {
                 var u = unwrap(r)
@@ -575,8 +586,22 @@
                     React.createElement('span', { className: 'count' }, t('batchSelected').replace('{n}', sel.length))
                   ),
                   React.createElement('div', { className: 'pm-toast' }, t('batchNote').replace('{n}', sel.length)),
-                  React.createElement('input', { className: 'pm-input', placeholder: t('batchName'), value: batchModal.name, onChange: function (ev) { setBatchModal({ name: ev.target.value, desc: batchModal.desc }) } }),
-                  React.createElement('input', { className: 'pm-input', placeholder: t('batchDesc'), value: batchModal.desc, onChange: function (ev) { setBatchModal({ name: batchModal.name, desc: ev.target.value }) } }),
+                  React.createElement('div', { className: 'pm-form' },
+                    React.createElement('button', { className: 'pm-btn' + (batchModal.mode === 'none' ? ' primary' : ''), onClick: function () { setBatchModal({ mode: 'none', name: batchModal.name, desc: batchModal.desc, target: batchModal.target }) } }, t('batchModeNone')),
+                    React.createElement('button', { className: 'pm-btn' + (batchModal.mode === 'existing' ? ' primary' : ''), onClick: function () { setBatchModal({ mode: 'existing', name: batchModal.name, desc: batchModal.desc, target: batchModal.target }) } }, t('batchModeExisting')),
+                    React.createElement('button', { className: 'pm-btn' + (batchModal.mode === 'new' ? ' primary' : ''), onClick: function () { setBatchModal({ mode: 'new', name: batchModal.name, desc: batchModal.desc, target: batchModal.target }) } }, t('batchModeNew'))
+                  ),
+                  batchModal.mode === 'existing'
+                    ? React.createElement('select', { className: 'pm-input', value: batchModal.target, onChange: function (ev) { setBatchModal({ mode: 'existing', name: batchModal.name, desc: batchModal.desc, target: ev.target.value }) } },
+                        React.createElement('option', { value: '' }, t('batchTargetPlaceholder')),
+                        batchPresets.map(function (p) { return React.createElement('option', { key: p.name, value: p.name }, p.name + ' (' + p.refs.length + ' 项)') })
+                      )
+                    : (batchModal.mode === 'new'
+                      ? React.createElement('div', { className: 'pm-form' },
+                          React.createElement('input', { className: 'pm-input', placeholder: t('batchName'), value: batchModal.name, onChange: function (ev) { setBatchModal({ mode: 'new', name: ev.target.value, desc: batchModal.desc, target: batchModal.target }) } }),
+                          React.createElement('input', { className: 'pm-input', placeholder: t('batchDesc'), value: batchModal.desc, onChange: function (ev) { setBatchModal({ mode: 'new', name: batchModal.name, desc: ev.target.value, target: batchModal.target }) } })
+                        )
+                      : null),
                   React.createElement('div', { className: 'pm-pager' },
                     React.createElement('button', { className: 'pm-btn primary', disabled: busy !== '', onClick: doBatch }, t('batchGo')),
                     React.createElement('button', { className: 'pm-btn', onClick: function () { setBatchModal(null) } }, t('cancel'))
@@ -823,7 +848,8 @@
             batchInstall: '批量安装并生成整合包', batchTitle: '批量安装并生成整合包',
             batchName: '整合包名称', batchDesc: '整合包描述',
             batchNote: '将依次安装所选 {n} 个插件,完成后自动生成整合包(可在「插件包」中一键切换、导出分享)。',
-            batchNameRequired: '请填写整合包名称', batchGo: '开始批量安装',
+            batchNameRequired: '请填写整合包名称', batchTargetRequired: '请选择要加入的整合包', batchGo: '开始批量安装',
+            batchModeNone: '仅安装,不生成整合包', batchModeExisting: '加入现有整合包', batchModeNew: '新建整合包', batchTargetPlaceholder: '选择整合包…',
             batchBusy: '正在批量安装…请勿关闭页面(每个插件可能要几分钟)。',
             batchResultTitle: '批量安装结果', presetCreated: '整合包「{name}」已创建({n} 项)',
             presetSkipped: '未检测到新插件条目,整合包未创建(重启 dsh 后生效,可在「插件包」中补建)',
@@ -849,7 +875,8 @@
             batchInstall: 'Batch install & create bundle', batchTitle: 'Batch install & create bundle',
             batchName: 'Bundle name', batchDesc: 'Bundle description',
             batchNote: 'Installs the {n} selected plugins sequentially, then creates a preset bundle (switch/export it later under Bundles).',
-            batchNameRequired: 'Please enter a bundle name', batchGo: 'Start batch install',
+            batchNameRequired: 'Please enter a bundle name', batchTargetRequired: 'Pick a bundle to merge into', batchGo: 'Start batch install',
+            batchModeNone: 'Install only, no bundle', batchModeExisting: 'Merge into existing bundle', batchModeNew: 'Create new bundle', batchTargetPlaceholder: 'Select bundle…',
             batchBusy: 'Batch installing… keep this page open (each plugin may take minutes).',
             batchResultTitle: 'Batch install results', presetCreated: 'Bundle "{name}" created ({n} items)',
             presetSkipped: 'No new plugin entries detected; bundle not created (restart dsh, then create it under Bundles).',
