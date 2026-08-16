@@ -210,6 +210,26 @@ check('回退后 overrides 恢复为 prev', JSON.stringify(stAfterRecover.overri
 const patchAfterRecover = await fs.readFile(patchPath, 'utf8')
 check('回退后 patch 同步 prev 状态', /id: bash\n\s+disabled: false/.test(patchAfterRecover.replace(/\r/g, '')))
 
+// 批量导入压测回归(10 包:导入 + 导出/导入往返一致性)
+const benchStart = Date.now()
+let benchAllOk = true
+for (let i = 0; i < 10; i++) {
+  const doc = { name: '回归包-' + i, description: 'desc ' + i, plugins: ['tools', 'bash', 'ghost-' + i] }
+  const ri = await gw.importPreset(yaml.dump(doc))
+  if (!ri.ok) benchAllOk = false
+}
+check('批量导入 10 包成功', benchAllOk, '')
+let roundTripOk = true
+for (let i = 0; i < 10; i++) {
+  const e1 = await gw.exportPreset('回归包-' + i)
+  const ri2 = await gw.importPreset(e1.text)
+  const e2 = await gw.exportPreset('回归包-' + i)
+  if (!(e1.ok && ri2.ok && e2.ok && e2.text === e1.text)) roundTripOk = false
+}
+check('导出导入往返一致性(10 包)', roundTripOk, '')
+check('批量导入+一致性耗时 < 5s', Date.now() - benchStart < 5000, (Date.now() - benchStart) + 'ms')
+for (let i = 0; i < 10; i++) await gw.removePreset('回归包-' + i)
+
 patchText = await fs.readFile(patchPath, 'utf8')
 check('用户行仍在', patchText.includes('@scope/foo'), '')
 check('管理器 insert 行仍在', patchText.includes('id: pm-manager'), '')
