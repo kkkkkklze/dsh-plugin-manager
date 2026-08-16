@@ -23,6 +23,10 @@ Manage your DeepSeek Harness plugins right inside the web UI.
 - 💰 **余额与快捷入口** — 侧边栏显示 DeepSeek 余额(点击跳用量页)+ Chat 按钮;
 - 🤖 **agent 工具** — `plugin_list / plugin_enable / plugin_disable / plugin_add / plugin_remove / plugin_tag / plugin_preset_list / plugin_preset_switch / plugin_rollback / plugin_stop_self / plugin_market_inspect / plugin_market_install`。
 
+## 📸 预览 / Preview
+
+![dsh-plugin-manager 预览](docs/preview.png)
+
 ## 🔧 安装 / Install
 
 ```bash
