@@ -288,6 +288,35 @@ export function createManager(ctx, config) {
     return { presets: list, presetsPath }
   }
 
+  // 识别不可用引用:仓库形态(owner/repo)抓 package.json 分类;纯 id/标签引用标 unknown(网络失败也降级 unknown)
+  async function inspectRef(ref, profile) {
+    const norm = String(ref).trim()
+    if (!/^[\w.-]+\/[\w.-]+$/.test(norm)) return { ref, kind: 'unknown', reason: '非仓库引用(插件 id 或标签),需人工确认' }
+    let pkg = null
+    let netFail = false
+    for (const c of [norm + '/HEAD/package.json', norm + '/main/package.json', norm + '/master/package.json']) {
+      try {
+        const res = await fetch('https://raw.githubusercontent.com/' + c)
+        if (res.ok) { pkg = await res.json(); break }
+      } catch (e) { netFail = true }
+    }
+    if (!pkg) return { ref, kind: netFail ? 'unknown' : 'no-pkg', reason: netFail ? '网络不可达,未能识别' : '仓库无 package.json(可能是 Skill/应用/资源仓库)' }
+    const dsh = pkg.dsh && typeof pkg.dsh === 'object' ? pkg.dsh : null
+    if (dsh && (dsh.bundle || dsh.client)) return { ref, kind: 'plugin-missing', reason: '是 dsh 插件但未安装', install: 'dsh plugin --profile ' + profile + ' add github:' + norm }
+    return { ref, kind: 'not-plugin', reason: '有 package.json 但非 dsh 插件(' + (dsh ? Object.keys(dsh).join('/') : '无 dsh 清单') + ')' }
+  }
+  // 组装不可用引用提示词(供复制给 agent)
+  function buildPrompt(info, presetName) {
+    const lines = ['整合包「' + presetName + '」中有 ' + info.length + ' 项引用当前不可用,请按需处理:']
+    for (const it of info) {
+      if (it.kind === 'plugin-missing') lines.push('- ' + it.ref + ' — ' + it.reason + ',可执行: ' + it.install)
+      else if (it.kind === 'no-pkg') lines.push('- ' + it.ref + ' — ' + it.reason + ',请识别其类型(Skill/应用/MCP 等)并给出安装建议')
+      else if (it.kind === 'not-plugin') lines.push('- ' + it.ref + ' — ' + it.reason + ',请判断是否仍需要并给出替代方案')
+      else lines.push('- ' + it.ref + ' — ' + it.reason)
+    }
+    return lines.join('\n')
+  }
+
   async function opPresetSwitch(presetName) {
     const presets = await readPresets()
     const preset = presets[presetName]
@@ -342,8 +371,12 @@ export function createManager(ctx, config) {
       const why = []
       if (missing.length) why.push('未加载(可能未安装或需重启): ' + missing.join(', '))
       if (failed.length) why.push('加载失败: ' + failed.join(', '))
-      if (skipped.length) why.push('未安装: ' + skipped.join(', '))
-      return { ok: false, text: '切换失败:' + why.join('; ') + '。已自动退回切换前状态。' }
+      if (skipped.length) why.push('不可用: ' + skipped.join(', '))
+      // 识别不可用引用并生成提示词(仅识别仓库形态;网络失败降级 unknown)
+      const profile = opProfile()
+      const skippedInfo = await Promise.all(skipped.map((s) => inspectRef(s, profile).catch(() => ({ ref: s, kind: 'unknown', reason: '识别失败' }))))
+      const promptText = skipped.length ? buildPrompt(skippedInfo, presetName) : ''
+      return { ok: false, text: '切换失败:' + why.join('; ') + '。已自动退回切换前状态。', skippedInfo, promptText }
     }
     // 记录待确认切换:本次启动若崩溃(如插件冲突导致 boot 失败),下次启动将自动回退到切换前状态
     state.lastSwitch = { preset: presetName, prev, ts: Date.now() }

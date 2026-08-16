@@ -164,6 +164,30 @@ const afterBad = await fs.readFile(patchPath, 'utf8')
 check('回退后 patch 保留日常切换的启用行', /id: tools\n\s+disabled: false/.test(afterBad.replace(/\r/g, '')), afterBad.split('\n').slice(0, 12).join('|'))
 const gwRmBad = await gw.removePreset('坏包')
 check('清理坏包成功', gwRmBad.ok === true)
+// 混入非插件的整合包:切换失败时返回分类信息 + 可复制安装提示词(mock fetch 模拟识别)
+const realFetch = globalThis.fetch
+const mockRes = (body) => ({ ok: true, json: async () => body, text: async () => JSON.stringify(body) })
+globalThis.fetch = async (url) => {
+  const u = String(url)
+  if (u.includes('raw.githubusercontent.com/installed-plugin/foo')) return mockRes({ name: 'foo', dsh: { bundle: { patch: 'x' } } })
+  if (u.includes('raw.githubusercontent.com/skill-repo/bar')) return mockRes({ name: 'bar', dsh: {} })
+  if (u.includes('raw.githubusercontent.com/nopkg-repo/baz')) return { ok: false, status: 404, json: async () => ({}) }
+  if (u.includes('raw.githubusercontent.com/notdsh/qux')) return mockRes({ name: 'qux' })
+  return { ok: false, status: 404, json: async () => ({}) }
+}
+const gwMix = await gw.addPreset('混合包', '混入非插件', ['tools', 'installed-plugin/foo', 'skill-repo/bar', 'nopkg-repo/baz', 'notdsh/qux', 'plain-id'])
+check('addPreset 混合包成功', gwMix.ok === true)
+const gwMixSw = await gw.switchPreset('混合包')
+check('混合包切换失败(有不可用引用)', gwMixSw.ok === false)
+check('切换返回 skippedInfo 分类(5 项)', Array.isArray(gwMixSw.skippedInfo) && gwMixSw.skippedInfo.length === 5, JSON.stringify(gwMixSw.skippedInfo))
+const kinds = {}
+gwMixSw.skippedInfo.forEach((x) => { kinds[x.kind] = (kinds[x.kind] || 0) + 1 })
+check('分类正确(插件未装1/无包1/非插件2/未知1)', kinds['plugin-missing'] === 1 && kinds['no-pkg'] === 1 && kinds['not-plugin'] === 2 && kinds['unknown'] === 1, JSON.stringify(kinds))
+check('提示词含安装命令与 profile', String(gwMixSw.promptText || '').includes('dsh plugin --profile') && String(gwMixSw.promptText).includes('installed-plugin/foo'), gwMixSw.promptText)
+check('提示词区分非插件与无包', String(gwMixSw.promptText || '').includes('非 dsh 插件') && String(gwMixSw.promptText).includes('无 package.json'))
+globalThis.fetch = realFetch
+const gwRmMix = await gw.removePreset('混合包')
+check('清理混合包成功', gwRmMix.ok === true)
 const gwTag = await gw.tag('tools', 'AI')
 check('远程 tag ok', gwTag.ok === true)
 const gwAddP = await gw.addPreset('验收包', 'desc', ['tools'])

@@ -638,6 +638,7 @@
             var ptH = useState(null); var pt = ptH[0]; var setPt = ptH[1]
             var modalH = useState(null); var modal = modalH[0]; var setModal = modalH[1]
             var importTextH = useState(''); var importText = importTextH[0]; var setImportText = importTextH[1]
+            var noteH = useState(null); var note = noteH[0]; var setNote = noteH[1]
 
             var load = useCallback(function () {
               Promise.resolve(pm.presets()).then(function (r) {
@@ -654,7 +655,14 @@
             }, [])
             useEffect(function () { load(); loadAll() }, [load, loadAll])
             var act = function (p) { Promise.resolve(p).then(function (r) { var u = unwrap(r); setToast(u.text); setErr(!u.ok); load() }).catch(function (e) { setToast('失败: ' + e.message); setErr(true) }) }
-            var switchScene = function (p) { if (!window.confirm('接入插件包「' + p.name + '」?\n将停用包外插件(管理器除外)。\n若目标插件缺失或加载失败,将自动退回当前状态。')) return; act(pm.switchPreset(p.name)) }
+            var switchScene = function (p) {
+              if (!window.confirm('接入插件包「' + p.name + '」?\n将停用包外插件(管理器除外)。\n若目标插件缺失或加载失败,将自动退回当前状态。')) return
+              Promise.resolve(pm.switchPreset(p.name)).then(function (r) {
+                var u = unwrap(r)
+                setToast(u.text); setErr(!u.ok); load()
+                if (r.value && Array.isArray(r.value.skippedInfo) && r.value.skippedInfo.length) setNote({ preset: p.name, skipped: r.value.skippedInfo, prompt: r.value.promptText || '' })
+              }).catch(function (e) { setToast('失败: ' + e.message); setErr(true) })
+            }
             var removePreset = function (p) { if (!window.confirm('删除插件包「' + p.name + '」?')) return; act(pm.removePreset(p.name)) }
             var editPreset = function (p) { setName(p.name); setDesc(p.description || ''); setSel((p.refs || []).slice()); setPicker(true) }
             var resetForm = function () { setName(''); setDesc(''); setSel([]); setPicker(false); setPq(''); setPt(null) }
@@ -765,6 +773,30 @@
                   )
                 )
               ) : null,
+              note ? React.createElement('div', { className: 'pm-modal-overlay', onClick: function () { setNote(null) } },
+                React.createElement('div', { className: 'pm-modal', onClick: function (ev) { ev.stopPropagation() } },
+                  React.createElement('div', { className: 'pm-heading' },
+                    React.createElement('h3', null, t('switchUnavailableTitle')),
+                    React.createElement('span', { className: 'count' }, esc(note.preset))
+                  ),
+                  React.createElement('div', { className: 'pm-toast' }, t('switchUnavailableNote')),
+                  React.createElement('div', { className: 'pm-picker' },
+                    note.skipped.map(function (it) {
+                      return React.createElement('div', { key: it.ref, className: 'pm-row' },
+                        React.createElement('div', { className: 'pm-main' },
+                          React.createElement('span', { className: 'pm-name' }, esc(it.ref)),
+                          React.createElement('span', { className: 'pm-desc' }, esc(it.reason || ''))
+                        ),
+                        React.createElement('span', { className: 'pm-phase' }, esc(it.kind || ''))
+                      )
+                    })
+                  ),
+                  React.createElement('div', { className: 'pm-pager' },
+                    React.createElement('button', { className: 'pm-btn primary', onClick: function () { copyToClipboard(note.prompt); setNote(null) } }, t('copyPrompt')),
+                    React.createElement('button', { className: 'pm-btn', onClick: function () { setNote(null) } }, t('close'))
+                  )
+                )
+              ) : null,
               React.createElement('div', { className: 'pm-toast' + (err ? ' err' : '') }, esc(toast))
             )
             return ErrorBoundary ? React.createElement(ErrorBoundary, null, body) : body
@@ -795,6 +827,9 @@
             batchBusy: '正在批量安装…请勿关闭页面(每个插件可能要几分钟)。',
             batchResultTitle: '批量安装结果', presetCreated: '整合包「{name}」已创建({n} 项)',
             presetSkipped: '未检测到新插件条目,整合包未创建(重启 dsh 后生效,可在「插件包」中补建)',
+            switchUnavailableTitle: '部分插件不可用',
+            switchUnavailableNote: '该整合包有以下引用无法启用,已自动退回当前状态。可复制安装提示词给会话中的 agent 处理:',
+            copyPrompt: '复制安装提示词',
           },
           en: {
             categoriesTab: 'Categories', bundlesTab: 'Bundles', marketTab: 'Market',
@@ -818,6 +853,9 @@
             batchBusy: 'Batch installing… keep this page open (each plugin may take minutes).',
             batchResultTitle: 'Batch install results', presetCreated: 'Bundle "{name}" created ({n} items)',
             presetSkipped: 'No new plugin entries detected; bundle not created (restart dsh, then create it under Bundles).',
+            switchUnavailableTitle: 'Some refs unavailable',
+            switchUnavailableNote: 'These refs in the bundle cannot be enabled; state rolled back. Copy the install prompt and hand it to the agent in a session:',
+            copyPrompt: 'Copy install prompt',
           },
         }
         function apply(ctx) {
