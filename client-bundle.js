@@ -226,9 +226,30 @@
             var useState = React.useState, useEffect = React.useEffect
             var balH = useState(''); var bal = balH[0]; var setBal = balH[1]
             useEffect(function () {
-              Promise.resolve(pm.deepseekBalance()).then(function (r) {
-                if (r && r.ok && r.value && r.value.text) setBal(r.value.text)
-              }).catch(function () {})
+              // 低开销实时刷新:可见时每 60s 轮询 + 切回标签页立即刷新;后台标签页暂停、
+              // 请求在途不重入、余额没变化不触发重渲染,卸载即清理
+              var timer = null
+              var inFlight = false
+              var disposed = false
+              function refresh() {
+                if (inFlight || disposed || (typeof document !== 'undefined' && document.hidden)) return
+                inFlight = true
+                Promise.resolve(pm.deepseekBalance()).then(function (r) {
+                  if (disposed) return
+                  if (r && r.ok && r.value && r.value.text) {
+                    setBal(function (prev) { return prev === r.value.text ? prev : r.value.text })
+                  }
+                }).catch(function () {}).finally(function () { inFlight = false })
+              }
+              refresh()
+              timer = setInterval(refresh, 60000)
+              var onVis = function () { if (!document.hidden) refresh() }
+              if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVis)
+              return function () {
+                disposed = true
+                if (timer) clearInterval(timer)
+                if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis)
+              }
             }, [])
             if (!bal) return null
             try {

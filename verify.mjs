@@ -46,6 +46,7 @@ check('远程方法名避开命名空间服务原型(removeRow)', clientSrc.incl
 check('descriptor 带 typeSymbol 与 sourceLocation', clientSrc.includes('typeSymbol') && clientSrc.includes('sourceLocation'))
 check('client 含工作时间变红(9-12/14-18,dock 槽 + 兄弟选择器)', clientSrc.includes('conversation.input.dock') && clientSrc.includes('dsh-work-hours') && clientSrc.includes('WORK_HOURS') && clientSrc.includes('[data-dsh-work-hours] ~ *'))
 check('client 工作时间轮询带清理', clientSrc.includes('setInterval(applyWorkHoursClass') && clientSrc.includes("clearInterval(whTimer)"))
+check('client 余额实时刷新(60s 可见轮询+visibility 刷新+防重入+值变才更新)', clientSrc.includes('setInterval(refresh, 60000)') && clientSrc.includes('visibilitychange') && clientSrc.includes('document.hidden') && clientSrc.includes('inFlight') && clientSrc.includes('prev === r.value.text'))
 
 // ============ 第一层补:裸名导入(与 dsh loader 完全相同的解析路径)============
 console.log('--- 裸名导入回归 ---')
