@@ -58,6 +58,8 @@
             '.pm-check{accent-color:var(--dsw-alias-state-business-primary);width:15px;height:15px;cursor:pointer;flex-shrink:0}',
             '.pm-toast{font-size:12px;color:var(--dsw-alias-label-tertiary);min-height:16px}',
             '.pm-toast.err{color:var(--dsw-alias-state-error-primary)}',
+            // 工作时间(9:00-12:00 / 14:00-18:00)对话框变红:dock 标记元素与其后输入条是兄弟节点
+            'html.dsh-work-hours [data-dsh-work-hours] ~ *{border:1px solid var(--dsw-alias-state-error-primary,#e5484d)!important;box-shadow:0 0 0 1px var(--dsw-alias-state-error-primary,#e5484d),0 0 14px rgba(229,72,77,.35)!important;background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#e5484d) 6%,transparent)!important}',
           ].join('\n')
           var tagId = 'dsh-plugin-manager/client.css'
           if (document.querySelector('style[data-plugin-css=' + JSON.stringify(tagId) + ']') === null) {
@@ -240,6 +242,28 @@
             try {
               return React.createElement('button', { className: 'pm-btn', title: '打开 DeepSeek Chat', onClick: function () { window.open('https://chat.deepseek.com/', '_blank') } }, 'Chat')
             } catch (e) { return null }
+          }
+        }
+
+        // 工作时间(9:00-12:00 / 14:00-18:00,本地时间)对话框变红
+        var WORK_HOURS = [[9, 12], [14, 18]]
+        function inWorkHours(date) {
+          var h = date.getHours()
+          for (var i = 0; i < WORK_HOURS.length; i++) {
+            if (h >= WORK_HOURS[i][0] && h < WORK_HOURS[i][1]) return true
+          }
+          return false
+        }
+        function applyWorkHoursClass() {
+          try {
+            var root = document.documentElement
+            if (inWorkHours(new Date())) root.classList.add('dsh-work-hours')
+            else root.classList.remove('dsh-work-hours')
+          } catch (e) {}
+        }
+        function makeWorkHoursMarker() {
+          return function WorkHoursMarker() {
+            try { return React.createElement('div', { 'data-dsh-work-hours': '', style: { display: 'none' } }) } catch (e) { return null }
           }
         }
 
@@ -912,6 +936,20 @@
         function apply(ctx) {
           if (ctx.locale) { try { ctx.effect(function () { ctx.locale.register(NS, LOCALE); return function () {} }, 'dsh-plugin-manager: locale dictionaries') } catch (e3) {} }
           var t = (ctx.locale && ctx.locale.bind) ? ctx.locale.bind(NS) : function (k) { return (LOCALE.zh && LOCALE.zh[k]) || k }
+          // 工作时间变红:立即应用 + 每 30s 刷新(与卸载联动清理)
+          var whTimer = null
+          try {
+            if (typeof document !== 'undefined' && document.documentElement) {
+              applyWorkHoursClass()
+              whTimer = setInterval(applyWorkHoursClass, 30000)
+              ctx.effect(function () {
+                return function () {
+                  if (whTimer) clearInterval(whTimer)
+                  try { document.documentElement.classList.remove('dsh-work-hours') } catch (e) {}
+                }
+              }, 'dsh-plugin-manager: work-hours')
+            }
+          } catch (e4) {}
           return Promise.resolve().then(function () {
             return ctx.remote.$mount(CONTRIBUTION)
           }).then(function (unmount) {
@@ -932,7 +970,11 @@
             var d5 = ctx.slots.inject('sidebar.footer.action', function () {
               return ctx.slots.register({ name: 'sidebar.footer.action', id: 'plugin-manager-chat', locale: NS, inject: function () { return {} } }, makeChatButton())
             })
-            return function () { if (d1) d1(); if (d2) d2(); if (d3) d3(); if (d4) d4(); if (d5) d5(); return unmount() }
+            // 工作时间变红标记:渲染在聊天输入条之前的 dock 槽,由 CSS 兄弟选择器命中输入条
+            var d6 = ctx.slots.inject('conversation.input.dock', function () {
+              return ctx.slots.register({ name: 'conversation.input.dock', id: 'plugin-manager-work-hours', order: -100, label: function () { return 'work-hours' }, locale: NS, inject: function () { return {} }, children: {} }, makeWorkHoursMarker())
+            })
+            return function () { if (d1) d1(); if (d2) d2(); if (d3) d3(); if (d4) d4(); if (d5) d5(); if (d6) d6(); return unmount() }
           }).catch(function (err) {
             if (typeof console !== 'undefined') console.error('[dsh-plugin-manager] client apply failed:', err)
             registerFallback(ctx, err && err.message ? err.message : String(err))

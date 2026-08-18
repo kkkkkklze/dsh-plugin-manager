@@ -44,6 +44,8 @@ check('client 识别限流与缓存(防 raw 假404)', clientSrc.includes('mapLim
 check('client 含 remote 自挂载', clientSrc.includes('$mount'))
 check('远程方法名避开命名空间服务原型(removeRow)', clientSrc.includes('removeRow') && !clientSrc.includes("descriptor('remove',"))
 check('descriptor 带 typeSymbol 与 sourceLocation', clientSrc.includes('typeSymbol') && clientSrc.includes('sourceLocation'))
+check('client 含工作时间变红(9-12/14-18,dock 槽 + 兄弟选择器)', clientSrc.includes('conversation.input.dock') && clientSrc.includes('dsh-work-hours') && clientSrc.includes('WORK_HOURS') && clientSrc.includes('[data-dsh-work-hours] ~ *'))
+check('client 工作时间轮询带清理', clientSrc.includes('setInterval(applyWorkHoursClass') && clientSrc.includes("clearInterval(whTimer)"))
 
 // ============ 第一层补:裸名导入(与 dsh loader 完全相同的解析路径)============
 console.log('--- 裸名导入回归 ---')
